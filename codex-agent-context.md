@@ -178,6 +178,7 @@ Status terminal: `CANCELLED`
   - Struktur Firestore `chat_threads`, `chat_messages`
   - RN chat UI, listener realtime, push notif status booking/chat
   - Pengetesan rule Firestore sesuai snippet keamanan
+  - ✅ Backend chat thread metadata + registrasi FCM token + push trigger booking status
 - **Review & Notes**
   - Terapis isi session note per sesi
   - Pasien beri rating + comment setelah COMPLETED

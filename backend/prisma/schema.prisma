@@ -30,6 +30,39 @@ enum Gender {
   OTHER
 }
 
+enum BookingStatus {
+  WAITING_THERAPIST_CONFIRM
+  PAYMENT_PENDING
+  WAITING_ADMIN_VERIFY_PAYMENT
+  PAYMENT_EXPIRED
+  PAID
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED_BY_PATIENT
+  CANCELLED_BY_THERAPIST
+  CANCELLED_BY_ADMIN
+  REFUNDED
+}
+
+enum SessionStatus {
+  PENDING_SCHEDULE
+  WAITING_THERAPIST_CONFIRM
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING_UPLOAD
+  WAITING_ADMIN_VERIFY
+  VERIFIED
+  REJECTED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+}
+
 model User {
   id                String             @id @default(uuid())
   email             String             @unique
@@ -40,6 +73,13 @@ model User {
   googleId          String?            @unique
   patientProfile    PatientProfile?
   therapistProfile  TherapistProfile?
+  patientBookings   Booking[]          @relation("PatientBookings")
+  therapistBookings Booking[]          @relation("TherapistBookings")
+  verifiedPayments  Payment[]          @relation("PaymentsVerified")
+  notificationTokens NotificationToken[]
+  patientReviews    Review[]           @relation("PatientReviews")
+  therapistReviews  Review[]           @relation("TherapistReviews")
+  sessionNotes      SessionNote[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -69,4 +109,119 @@ model TherapistProfile {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model TherapyPackage {
+  id                String    @id @default(uuid())
+  name              String    @unique
+  description       String?
+  sessionCount      Int       @default(1)
+  price             Decimal
+  defaultExpiryDays Int?
+  isActive          Boolean   @default(true)
+  bookings          Booking[]
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Booking {
+  id                String         @id @default(uuid())
+  patientId         String
+  therapistId       String
+  packageId         String
+  status            BookingStatus  @default(WAITING_THERAPIST_CONFIRM)
+  notesFromPatient  String?
+  painLevel         Int?
+  preferredSchedule DateTime
+  consentAccepted   Boolean        @default(false)
+  paymentDueAt      DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  patient           User           @relation("PatientBookings", fields: [patientId], references: [id])
+  therapist         User           @relation("TherapistBookings", fields: [therapistId], references: [id])
+  package           TherapyPackage @relation(fields: [packageId], references: [id])
+  sessions          BookingSession[]
+  payment           Payment?
+  chatThread        ChatThread?
+  review            Review?
+}
+
+model BookingSession {
+  id           String        @id @default(uuid())
+  bookingId    String
+  sessionNumber Int
+  scheduledAt  DateTime?
+  status       SessionStatus @default(PENDING_SCHEDULE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  booking      Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  note         SessionNote?
+
+  @@unique([bookingId, sessionNumber])
+}
+
+model SessionNote {
+  id          String   @id @default(uuid())
+  sessionId   String   @unique
+  therapistId String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  session     BookingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  therapist   User           @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  patientId   String
+  therapistId String
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  patient     User     @relation("PatientReviews", fields: [patientId], references: [id], onDelete: Cascade)
+  therapist   User     @relation("TherapistReviews", fields: [therapistId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  bookingId   String        @unique
+  amount      Decimal
+  method      PaymentMethod @default(BANK_TRANSFER)
+  proofUrl    String?
+  status      PaymentStatus @default(PENDING_UPLOAD)
+  uploadedAt  DateTime?
+  verifiedBy  String?
+  verifiedAt  DateTime?
+  booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  verifier    User?         @relation("PaymentsVerified", fields: [verifiedBy], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model NotificationToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model ChatThread {
+  id            String   @id @default(uuid())
+  bookingId     String   @unique
+  patientId     String
+  therapistId   String
+  firestoreId   String   @unique
+  lastMessageAt DateTime?
+  lockedAt      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 }

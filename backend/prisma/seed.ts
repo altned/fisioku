@@ -1,4 +1,10 @@
-import { PrismaClient, UserRole, UserStatus, Gender } from "@prisma/client";
+import {
+  Gender,
+  Prisma,
+  PrismaClient,
+  UserRole,
+  UserStatus,
+} from "@prisma/client";
 import * as bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
@@ -40,6 +46,26 @@ const seedUsers = [
 
 async function main() {
   const password = await bcrypt.hash("Password123!", 10);
+
+  await prisma.therapyPackage.createMany({
+    data: [
+      {
+        name: "Single Session",
+        description: "Sesi tunggal fisioterapi home-visit untuk kebutuhan akut.",
+        sessionCount: 1,
+        price: new Prisma.Decimal(350_000),
+        defaultExpiryDays: 7,
+      },
+      {
+        name: "Recovery Pack",
+        description: "Paket 4 sesi untuk pemulihan pasca cedera.",
+        sessionCount: 4,
+        price: new Prisma.Decimal(1_200_000),
+        defaultExpiryDays: 30,
+      },
+    ],
+    skipDuplicates: true,
+  });
 
   for (const user of seedUsers) {
     const createdUser = await prisma.user.upsert({
