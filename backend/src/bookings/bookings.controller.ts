@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -18,6 +21,8 @@ import { RolesGuard } from '../common/guards/roles.guard';
 import { ConfirmBookingDto } from './dto/confirm-booking.dto';
 import { UploadPaymentProofDto } from './dto/upload-payment-proof.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
+import { AcceptConsentDto } from './dto/accept-consent.dto';
+import type { Request } from 'express';
 
 @Controller({
   path: 'bookings',
@@ -64,5 +69,26 @@ export class BookingsController {
     @Body() dto: VerifyPaymentDto,
   ) {
     return this.bookingsService.verifyPayment(user.id, bookingId, dto);
+  }
+
+  @Post(':bookingId/consent')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT)
+  @HttpCode(HttpStatus.CREATED)
+  acceptConsent(
+    @CurrentUser() user: ActiveUserData,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+    @Body() dto: AcceptConsentDto,
+    @Req() req: Request,
+  ) {
+    return this.bookingsService.acceptConsent(
+      user.id,
+      bookingId,
+      dto.textVersion,
+      {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      },
+    );
   }
 }

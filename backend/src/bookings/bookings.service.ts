@@ -8,6 +8,7 @@ import {
   Booking,
   BookingSession,
   BookingStatus,
+  Consent,
   PatientProfile,
   Payment,
   PaymentMethod,
@@ -39,6 +40,7 @@ type BookingWithRelations = Booking & {
   sessions: BookingSession[];
   payment: Payment | null;
   review: Review | null;
+  consent: Consent | null;
 };
 
 const PAYMENT_DEADLINE_HOURS = 1;
@@ -62,6 +64,7 @@ export class BookingsService {
     sessions: true,
     payment: true,
     review: true,
+    consent: true,
   };
 
   async create(
@@ -217,7 +220,7 @@ export class BookingsService {
     }
 
     if (booking.paymentDueAt && booking.paymentDueAt.getTime() < Date.now()) {
-      await this.markBookingExpired(bookingId);
+      await this.expirePayment(bookingId);
       throw new BadRequestException('Payment deadline has passed.');
     }
 
@@ -244,6 +247,51 @@ export class BookingsService {
     const response = this.toResponse(updated);
     await this.notificationsService.notifyBookingStatusChange(response);
     return response;
+  }
+
+  async acceptConsent(
+    patientId: string,
+    bookingId: string,
+    textVersion: string,
+    meta?: { ip?: string | string[]; userAgent?: string | string[] },
+  ): Promise<BookingResponse> {
+    const booking = await this.findBookingOrThrow(bookingId);
+
+    if (booking.patientId !== patientId) {
+      throw new ForbiddenException(
+        'You cannot submit consent for this booking.',
+      );
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        consent: {
+          upsert: {
+            update: {
+              textVersion,
+              acceptedAt: new Date(),
+              ipAddress: typeof meta?.ip === 'string' ? meta?.ip : undefined,
+              userAgent:
+                typeof meta?.userAgent === 'string'
+                  ? meta?.userAgent
+                  : undefined,
+            },
+            create: {
+              textVersion,
+              ipAddress: typeof meta?.ip === 'string' ? meta?.ip : undefined,
+              userAgent:
+                typeof meta?.userAgent === 'string'
+                  ? meta?.userAgent
+                  : undefined,
+            },
+          },
+        },
+      },
+      include: this.bookingInclude,
+    });
+
+    return this.toResponse(updated as BookingWithRelations);
   }
 
   async verifyPayment(
@@ -340,6 +388,14 @@ export class BookingsService {
             createdAt: booking.review.createdAt,
           }
         : null,
+      consent: booking.consent
+        ? {
+            textVersion: booking.consent.textVersion,
+            acceptedAt: booking.consent.acceptedAt,
+            ipAddress: booking.consent.ipAddress,
+            userAgent: booking.consent.userAgent,
+          }
+        : null,
       createdAt: booking.createdAt,
     };
   }
@@ -364,18 +420,34 @@ export class BookingsService {
     return booking as BookingWithRelations;
   }
 
-  private async markBookingExpired(bookingId: string) {
-    await this.prisma.booking.update({
+  async expirePayment(bookingId: string): Promise<BookingResponse | null> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: this.bookingInclude,
+    });
+
+    if (!booking || booking.status !== BookingStatus.PAYMENT_PENDING) {
+      return null;
+    }
+
+    const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: BookingStatus.PAYMENT_EXPIRED,
-        payment: {
-          update: {
-            status: PaymentStatus.REJECTED,
-          },
-        },
+        payment: booking.payment
+          ? {
+              update: {
+                status: PaymentStatus.REJECTED,
+              },
+            }
+          : undefined,
       },
+      include: this.bookingInclude,
     });
+
+    const response = this.toResponse(updated as BookingWithRelations);
+    await this.notificationsService.notifyBookingStatusChange(response);
+    return response;
   }
 
   private getPaymentDeadline(): Date {

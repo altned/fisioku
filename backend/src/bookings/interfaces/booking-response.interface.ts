@@ -29,6 +29,13 @@ export interface BookingReviewResponse {
   createdAt: Date;
 }
 
+export interface BookingConsentResponse {
+  textVersion: string;
+  acceptedAt: Date;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
 export interface BookingResponse {
   id: string;
   patientId: string;
@@ -54,5 +61,6 @@ export interface BookingResponse {
   sessions: BookingSessionResponse[];
   payment?: BookingPaymentResponse | null;
   review?: BookingReviewResponse | null;
+  consent?: BookingConsentResponse | null;
   createdAt: Date;
 }

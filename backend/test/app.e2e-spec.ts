@@ -143,6 +143,12 @@ describe('App (e2e)', () => {
     expect(bookingBody.sessions).toHaveLength(1);
     const sessionId = bookingBody.sessions[0].id;
 
+    const consentRes = await request(app.getHttpServer())
+      .post(`/api/v1/bookings/${bookingBody.id}/consent`)
+      .set('Authorization', `Bearer ${patientToken}`)
+      .send({ textVersion: 'Consent v1.0' });
+    expect(consentRes.status).toBe(201);
+
     const chatRes = await request(app.getHttpServer())
       .get(`/api/v1/chat/threads/${bookingBody.id}`)
       .set('Authorization', `Bearer ${patientToken}`);
@@ -199,6 +205,11 @@ describe('App (e2e)', () => {
     expect(adminAuth.status).toBe(200);
     const adminToken = (adminAuth.body as AuthResponse).accessToken;
 
+    const summaryRes = await request(app.getHttpServer())
+      .get('/api/v1/admin/summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(summaryRes.status).toBe(200);
+
     const verifyRes = await request(app.getHttpServer())
       .patch(`/api/v1/bookings/${bookingBody.id}/payment/verify`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -232,6 +243,18 @@ describe('App (e2e)', () => {
     const tokenBody = registerTokenRes.body as { token: string };
     expect(tokenBody.token).toEqual(tokenValue);
 
+    const pkgRes = await request(app.getHttpServer())
+      .post('/api/v1/admin/packages')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: `Admin Package ${Date.now()}`,
+        sessionCount: 2,
+        price: 500000,
+      });
+    expect(pkgRes.status).toBe(201);
+    const pkgBody = pkgRes.body as { id: string };
+    const pkgId = pkgBody.id;
+
     await prisma.booking.delete({
       where: { id: bookingBody.id },
     });
@@ -241,5 +264,6 @@ describe('App (e2e)', () => {
     await prisma.notificationToken.deleteMany({
       where: { token: tokenValue },
     });
+    await prisma.therapyPackage.delete({ where: { id: pkgId } });
   });
 });

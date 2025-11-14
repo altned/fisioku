@@ -5,6 +5,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: allowedOrigins.length ? allowedOrigins : true,
+  });
+
   app.setGlobalPrefix('api');
   app.enableVersioning({
     defaultVersion: '1',

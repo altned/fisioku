@@ -3,6 +3,7 @@
 ## Struktur
 
 - `backend/` – layanan NestJS + Prisma untuk autentikasi dasar & manajemen pengguna.
+- `admin-web/` – dashboard Next.js untuk operasional admin.
 - `codex-agent-context.md` – konteks proyek dan tahapan MVP.
 
 ## Menjalankan Backend
@@ -31,6 +32,7 @@ Perintah utilitas:
 ### Variabel Lingkungan Tambahan
 
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` – diperlukan jika ingin mengaktifkan Firebase Admin SDK untuk push notification.
+- `ALLOWED_ORIGINS` – daftar origin (dipisah koma) yang diizinkan mengakses backend, misalnya `http://localhost:3001` untuk admin web lokal.
 
 #### Cara menyiapkan kredensial Firebase Admin
 
@@ -41,3 +43,17 @@ Perintah utilitas:
    - `client_email` → isi ke `FIREBASE_CLIENT_EMAIL`.
    - `private_key` → isi ke `FIREBASE_PRIVATE_KEY` (ingat untuk mengganti newline menjadi `\n` saat dimasukkan ke `.env` pada Windows/Linux shell).
 4. Restart server (`npm run start:dev`) agar kredensial baru terbaca. Jika tidak ingin mengirim push notification di environment tertentu, cukup kosongkan variabel-variabel tersebut.
+
+## Menjalankan Admin Web
+
+```bash
+cd admin-web
+cp .env.local.example .env.local # isi NEXT_PUBLIC_API_URL sesuai backend
+npm install
+npm run dev -- -p 3001
+```
+
+- `NEXT_PUBLIC_API_URL` harus mengarah ke instance backend (mis. `http://localhost:3000`).
+- Login dilakukan lewat halaman `/login` menggunakan akun admin dari backend; token akan tersimpan di browser.
+
+Halaman yang tersedia: summary dashboard (`/`), daftar booking (`/bookings`) termasuk aksi verifikasi pembayaran, dan manajemen paket (`/packages`).

@@ -144,6 +144,7 @@ model Booking {
   payment           Payment?
   chatThread        ChatThread?
   review            Review?
+  consent           Consent?
 }
 
 model BookingSession {
@@ -183,6 +184,16 @@ model Review {
   booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   patient     User     @relation("PatientReviews", fields: [patientId], references: [id], onDelete: Cascade)
   therapist   User     @relation("TherapistReviews", fields: [therapistId], references: [id], onDelete: Cascade)
+}
+
+model Consent {
+  id          String   @id @default(uuid())
+  bookingId   String   @unique
+  textVersion String
+  acceptedAt  DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 }
 
 model Payment {
