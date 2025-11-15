@@ -1,7 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { Prisma, UserRole, UserStatus } from '@prisma/client';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  Prisma,
+  TherapistAvailability,
+  UserRole,
+  UserStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListTherapistsQueryDto } from './dto/list-therapists-query.dto';
+import { CreateAvailabilityDto } from './dto/create-availability.dto';
 
 export interface TherapistSummary {
   id: string;
@@ -104,5 +110,33 @@ export class TherapistsService {
         totalPages: Math.ceil(total / limit) || 1,
       },
     };
+  }
+
+  async listAvailability(therapistId: string) {
+    return this.prisma.therapistAvailability.findMany({
+      where: { therapistId },
+      orderBy: { startTime: 'asc' },
+    });
+  }
+
+  async createAvailability(
+    therapistId: string,
+    dto: CreateAvailabilityDto,
+  ): Promise<TherapistAvailability> {
+    const start = new Date(dto.startTime);
+    const end = new Date(dto.endTime);
+    if (end <= start) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    return this.prisma.therapistAvailability.create({
+      data: {
+        therapistId,
+        startTime: start,
+        endTime: end,
+        isRecurring: dto.isRecurring ?? false,
+        recurringWeekday: dto.isRecurring ? dto.recurringWeekday : null,
+      },
+    });
   }
 }

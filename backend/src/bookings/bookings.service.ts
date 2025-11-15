@@ -44,6 +44,14 @@ type BookingWithRelations = Booking & {
 };
 
 const PAYMENT_DEADLINE_HOURS = 1;
+const PAYMENT_BLOCKED_STATUSES: BookingStatus[] = [
+  BookingStatus.WAITING_THERAPIST_CONFIRM,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
+  BookingStatus.PAID,
+  BookingStatus.IN_PROGRESS,
+  BookingStatus.COMPLETED,
+];
 
 @Injectable()
 export class BookingsService {
@@ -121,6 +129,15 @@ export class BookingsService {
 
     if (!therapyPackage || !therapyPackage.isActive) {
       throw new BadRequestException('Therapy package is unavailable.');
+    }
+
+    const overlappingBooking = await this.findOverlappingBooking(
+      dto.therapistId,
+      preferredSchedule,
+    );
+
+    if (overlappingBooking) {
+      throw new BadRequestException('Therapist is not available at that time.');
     }
 
     const booking = await this.prisma.booking.create({
@@ -454,5 +471,24 @@ export class BookingsService {
     const deadline = new Date();
     deadline.setHours(deadline.getHours() + PAYMENT_DEADLINE_HOURS);
     return deadline;
+  }
+
+  private async findOverlappingBooking(
+    therapistId: string,
+    preferredSchedule: Date,
+  ) {
+    return this.prisma.booking.findFirst({
+      where: {
+        therapistId,
+        status: {
+          in: PAYMENT_BLOCKED_STATUSES,
+        },
+        sessions: {
+          some: {
+            scheduledAt: preferredSchedule,
+          },
+        },
+      },
+    });
   }
 }

@@ -107,8 +107,21 @@ model TherapistProfile {
   bio             String?
   photoUrl        String?
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availabilities  TherapistAvailability[]
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model TherapistAvailability {
+  id              String   @id @default(uuid())
+  therapistId     String
+  startTime       DateTime
+  endTime         DateTime
+  isRecurring     Boolean  @default(false)
+  recurringWeekday Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  therapist       TherapistProfile @relation(fields: [therapistId], references: [userId], onDelete: Cascade)
 }
 
 model TherapyPackage {

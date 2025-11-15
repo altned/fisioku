@@ -200,7 +200,7 @@ Status terminal: `CANCELLED`
 | --- | --- | --- |
 | Consent belum disimpan | Kepatuhan hukum lemah | ✅ Tambah tabel `consents` + endpoint `POST /bookings/:id/consent` yang menyimpan teks versi + meta (ip/user-agent). FE tinggal menampilkan teks terbaru sebelum submit. |
 | Deadline pembayaran tidak otomatis expire | Booking menggantung lama | ✅ Scheduler (Nest Schedule) memeriksa `PAYMENT_PENDING` lewat dari `paymentDueAt`, ubah booking ke `PAYMENT_EXPIRED` dan tandai payment `REJECTED`, juga mengirim notifikasi status. |
-| Jadwal terapis belum bisa menolak slot | Risiko double-book | Tambah tabel `therapist_unavailability`. FE kalender = jam kerja dasar dikurangi unavailability dan sesi `SCHEDULED`. Simple form di app terapis cukup untuk MVP. |
+| Jadwal terapis belum bisa menolak slot | Risiko double-book | ✅ Tambah tabel `TherapistAvailability` + endpoint RN untuk menambah slot, serta validasi booking yang menolak jadwal bentrok. |
 | Chat belum otomatis read-only 24 jam pasca sesi | Chat tetap aktif terlalu lama | Setelah sesi terakhir `COMPLETED`, scheduler set `chatThread.lockedAt = completedAt + 24h`. Firestore rules + RN app blokir kirim pesan jika `lockedAt` ada. |
 | Audit admin belum ada | Sulit telusur tindakan | Middleware `AuditService.record()` menyimpan setiap aksi admin (verifikasi pembayaran, toggle paket) ke tabel `audit_logs` untuk referensi. |
 | Mobile flow belum teruji end-to-end | Risiko regression saat go-live | Siapkan skrip API/UAT (Postman/Playwright) hingga RN app siap; gunakan hook React Query seragam agar logic konsisten. |
