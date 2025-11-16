@@ -175,6 +175,7 @@ Status terminal: `CANCELLED`
   - Terapis directory (filter lokasi/spesialisasi dasar)
   - Booking DTO + validation, state WAITING_THERAPIST_CONFIRM
   - React Native flow: pilih terapis → paket → jadwal → consent
+  - ✅ Pondasi app React Native (Expo) untuk login & fetch profil user
 - **Konfirmasi & Pembayaran**
   - Endpoint konfirmasi terapis, timer payment
   - Endpoint upload file internal (`POST /files/payment-proof`) yang menaruh bukti transfer di storage server (local disk/S3 kompatibel) + sanitasi mime/ukuran + response URL satu kali
@@ -198,6 +199,7 @@ Status terminal: `CANCELLED`
   - Test plan: unit (backend), integration (booking flow), e2e (RN)
   - Deploy backend (Cloud Run), file storage (GCS), verifikasi DNS
   - Soft launch ke user internal, kumpulkan feedback
+  - 📄 QA catatan awal untuk mobile tersedia di `mobile/QA_PLAN.md`
 
 ---
 
