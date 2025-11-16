@@ -70,4 +70,4 @@ npm run start
 
 - Jalankan backend terlebih dahulu dan pastikan `EXPO_PUBLIC_API_URL` mengarah ke host yang dapat dijangkau simulator/emulator.
 - Untuk login awal, gunakan akun seed (`patient@fisioku.local` atau `therapist@fisioku.local`).
-- Aplikasi saat ini baru mencakup alur login + penampilan profil dari endpoint `/api/v1/users/me` sebagai fondasi React Native.
+- Fitur saat ini: autentikasi dasar, fetch profil, daftar terapis + pencarian, detail terapis, form booking terhubung API (create + consent otomatis), daftar booking terbaru, serta layar booking yang memungkinkan upload bukti bayar & pembatalan pasien.

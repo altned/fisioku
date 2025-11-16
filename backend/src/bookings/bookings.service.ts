@@ -485,6 +485,17 @@ export class BookingsService {
     return response;
   }
 
+  async listForPatient(patientId: string): Promise<BookingResponse[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { patientId },
+      include: this.bookingInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return bookings.map((booking) =>
+      this.toResponse(booking as BookingWithRelations),
+    );
+  }
+
   async cancelByAdmin(bookingId: string): Promise<BookingResponse> {
     const booking = await this.findBookingOrThrow(bookingId);
 
@@ -499,6 +510,53 @@ export class BookingsService {
       where: { id: bookingId },
       data: {
         status: BookingStatus.CANCELLED_BY_ADMIN,
+        paymentDueAt: null,
+        sessions: {
+          updateMany: {
+            where: { bookingId },
+            data: { status: SessionStatus.CANCELLED },
+          },
+        },
+        payment: booking.payment
+          ? {
+              update: {
+                status: PaymentStatus.REJECTED,
+              },
+            }
+          : undefined,
+      },
+      include: this.bookingInclude,
+    });
+
+    const response = this.toResponse(updated as BookingWithRelations);
+    await this.notificationsService.notifyBookingStatusChange(response);
+    return response;
+  }
+
+  async cancelByPatient(
+    patientId: string,
+    bookingId: string,
+  ): Promise<BookingResponse> {
+    const booking = await this.findBookingOrThrow(bookingId);
+
+    if (booking.patientId !== patientId) {
+      throw new ForbiddenException('You cannot cancel this booking.');
+    }
+
+    const forbiddenStatuses: BookingStatus[] = [
+      BookingStatus.CANCELLED_BY_PATIENT,
+      BookingStatus.CANCELLED_BY_ADMIN,
+      BookingStatus.CANCELLED_BY_THERAPIST,
+      BookingStatus.COMPLETED,
+    ];
+    if (forbiddenStatuses.includes(booking.status)) {
+      throw new BadRequestException('Booking cannot be cancelled now.');
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED_BY_PATIENT,
         paymentDueAt: null,
         sessions: {
           updateMany: {
