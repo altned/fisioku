@@ -1,7 +1,7 @@
 import { PaymentMethod } from '@prisma/client';
 import { IsEnum, IsOptional, IsUUID } from 'class-validator';
 
-export class UploadPaymentProofDto {
+export class AdminAttachPaymentProofDto {
   @IsUUID()
   fileId: string;
 

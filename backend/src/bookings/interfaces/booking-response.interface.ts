@@ -16,6 +16,7 @@ export interface BookingPaymentResponse {
   status: PaymentStatus;
   method: PaymentMethod;
   proofUrl?: string | null;
+  proofFileId?: string | null;
   amount: string;
   uploadedAt?: Date | null;
   verifiedAt?: Date | null;

@@ -63,6 +63,10 @@ enum PaymentMethod {
   BANK_TRANSFER
 }
 
+enum StoredFilePurpose {
+  PAYMENT_PROOF
+}
+
 model User {
   id                String             @id @default(uuid())
   email             String             @unique
@@ -80,6 +84,8 @@ model User {
   patientReviews    Review[]           @relation("PatientReviews")
   therapistReviews  Review[]           @relation("TherapistReviews")
   sessionNotes      SessionNote[]
+  storedFiles       StoredFile[]
+  auditLogs         AuditLog[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -166,6 +172,7 @@ model BookingSession {
   sessionNumber Int
   scheduledAt  DateTime?
   status       SessionStatus @default(PENDING_SCHEDULE)
+  completedAt  DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   booking      Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -215,12 +222,14 @@ model Payment {
   amount      Decimal
   method      PaymentMethod @default(BANK_TRANSFER)
   proofUrl    String?
+  proofFileId String?       @unique
   status      PaymentStatus @default(PENDING_UPLOAD)
   uploadedAt  DateTime?
   verifiedBy  String?
   verifiedAt  DateTime?
   booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   verifier    User?         @relation("PaymentsVerified", fields: [verifiedBy], references: [id])
+  proofFile   StoredFile?   @relation("PaymentProofFile", fields: [proofFileId], references: [id], onDelete: SetNull)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 }
@@ -248,4 +257,45 @@ model ChatThread {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model StoredFile {
+  id           String                  @id @default(uuid())
+  purpose      StoredFilePurpose
+  path         String
+  originalName String?
+  mimeType     String?
+  size         Int
+  uploaderId   String?
+  uploader     User?                   @relation(fields: [uploaderId], references: [id], onDelete: SetNull)
+  payment      Payment?                @relation("PaymentProofFile")
+  downloadTokens StoredFileDownloadToken[]
+  createdAt    DateTime                @default(now())
+  updatedAt    DateTime                @updatedAt
+}
+
+model StoredFileDownloadToken {
+  id        String     @id @default(uuid())
+  fileId    String
+  token     String     @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime   @default(now())
+  file      StoredFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([actorId])
 }

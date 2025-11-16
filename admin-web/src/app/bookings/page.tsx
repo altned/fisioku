@@ -1,8 +1,16 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { adminApi } from "@/lib/api";
-import { useState } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import {
+  adminApi,
+  uploadPaymentProofFile,
+  type BookingListResponse,
+} from "@/lib/api";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 
 const bookingStatuses = [
   "WAITING_THERAPIST_CONFIRM",
@@ -21,12 +29,8 @@ export default function BookingsPage() {
     queryFn: () => adminApi.bookings({ status: status || undefined }),
   });
 
-  const verifyMutation = useMutation({
-    mutationFn: ({ id, approved }: { id: string; approved: boolean }) =>
-      adminApi.verifyPayment(id, approved),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["bookings"] }),
-  });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["bookings"] });
 
   return (
     <div className="space-y-6">
@@ -65,54 +69,12 @@ export default function BookingsPage() {
                 <th className="px-4 py-3">Paket</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Pembayaran</th>
+                <th className="px-4 py-3">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {data.data.map((booking) => (
-                <tr key={booking.id} className="border-t text-slate-700">
-                  <td className="px-4 py-3">
-                    {new Date(booking.createdAt).toLocaleString("id-ID")}
-                  </td>
-                  <td className="px-4 py-3">
-                    {booking.patient.patientProfile?.fullName ?? booking.patient.email}
-                  </td>
-                  <td className="px-4 py-3">
-                    {booking.therapist.therapistProfile?.fullName ?? booking.therapist.email}
-                  </td>
-                  <td className="px-4 py-3">{booking.package.name}</td>
-                  <td className="px-4 py-3 font-medium">
-                    <span className="pill bg-slate-100 text-slate-600">
-                      {booking.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span>{booking.payment?.status ?? "-"}</span>
-                      {booking.status === "WAITING_ADMIN_VERIFY_PAYMENT" ? (
-                        <div className="flex gap-2">
-                          <button
-                            className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-100"
-                            onClick={() =>
-                              verifyMutation.mutate({ id: booking.id, approved: true })
-                            }
-                            disabled={verifyMutation.isPending}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
-                            onClick={() =>
-                              verifyMutation.mutate({ id: booking.id, approved: false })
-                            }
-                            disabled={verifyMutation.isPending}
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
+                <BookingRow key={booking.id} booking={booking} />
               ))}
             </tbody>
           </table>
@@ -122,5 +84,197 @@ export default function BookingsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+type BookingRowData = BookingListResponse["data"][number];
+
+function BookingRow({ booking }: { booking: BookingRowData }) {
+  const queryClient = useQueryClient();
+  const invalidate = () =>
+    void queryClient.invalidateQueries({ queryKey: ["bookings"] });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const verifyMutation = useMutation({
+    mutationFn: (approved: boolean) =>
+      adminApi.verifyPayment(booking.id, approved),
+    onSuccess: () => invalidate(),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (reason?: string) =>
+      adminApi.cancelBooking(booking.id, { reason }),
+    onSuccess: () => invalidate(),
+  });
+
+  const overrideMutation = useMutation({
+    mutationFn: (payload: { sessionId: string; scheduledAt: string }) =>
+      adminApi.overrideSession(booking.id, payload.sessionId, {
+        scheduledAt: payload.scheduledAt,
+      }),
+    onSuccess: () => invalidate(),
+  });
+
+  const attachMutation = useMutation({
+    mutationFn: (fileId: string) =>
+      adminApi.attachPaymentProof(booking.id, { fileId }),
+    onSuccess: () => invalidate(),
+  });
+
+  const nextSession = useMemo(
+    () =>
+      booking.sessions?.find((session) => session.status !== "COMPLETED") ??
+      null,
+    [booking.sessions],
+  );
+
+  const isTerminal = [
+    "COMPLETED",
+    "CANCELLED_BY_ADMIN",
+    "CANCELLED_BY_PATIENT",
+    "CANCELLED_BY_THERAPIST",
+    "PAYMENT_EXPIRED",
+    "REFUNDED",
+  ].includes(booking.status);
+
+  const canUploadProof = booking.status === "PAYMENT_PENDING";
+
+  const handleForceCancel = () => {
+    if (isTerminal) return;
+    const reason = window.prompt("Alasan pembatalan? (opsional)") ?? undefined;
+    cancelMutation.mutate(reason);
+  };
+
+  const handleOverrideSchedule = () => {
+    if (!nextSession) {
+      window.alert("Tidak ada sesi yang bisa dijadwalkan ulang.");
+      return;
+    }
+    const defaultValue =
+      nextSession.scheduledAt ?? new Date().toISOString().slice(0, 16);
+    const result =
+      window.prompt(
+        "Masukkan jadwal baru (format ISO, mis. 2025-01-01T09:00:00)",
+        defaultValue,
+      ) ?? "";
+    if (!result.trim()) {
+      return;
+    }
+    overrideMutation.mutate({ sessionId: nextSession.id, scheduledAt: result });
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setUploading(true);
+    try {
+      const { fileId } = await uploadPaymentProofFile(file);
+      await attachMutation.mutateAsync(fileId);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Gagal upload");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  return (
+    <tr className="border-t text-slate-700">
+      <td className="px-4 py-3">
+        {new Date(booking.createdAt).toLocaleString("id-ID")}
+      </td>
+      <td className="px-4 py-3">
+        {booking.patient.patientProfile?.fullName ?? booking.patient.email}
+      </td>
+      <td className="px-4 py-3">
+        {booking.therapist.therapistProfile?.fullName ??
+          booking.therapist.email}
+      </td>
+      <td className="px-4 py-3">{booking.package.name}</td>
+      <td className="px-4 py-3 font-medium">
+        <span className="pill bg-slate-100 text-slate-600">
+          {booking.status}
+        </span>
+        {nextSession ? (
+          <div className="mt-1 text-xs text-slate-500">
+            Sesi #{nextSession.sessionNumber}:{" "}
+            {nextSession.scheduledAt
+              ? new Date(nextSession.scheduledAt).toLocaleString("id-ID")
+              : "Belum dijadwalkan"}
+          </div>
+        ) : null}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span>{booking.payment?.status ?? "-"}</span>
+            {booking.status === "WAITING_ADMIN_VERIFY_PAYMENT" ? (
+              <div className="flex gap-2">
+                <button
+                  className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 hover:bg-green-100"
+                  onClick={() => verifyMutation.mutate(true)}
+                  disabled={verifyMutation.isPending}
+                >
+                  Approve
+                </button>
+                <button
+                  className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100"
+                  onClick={() => verifyMutation.mutate(false)}
+                  disabled={verifyMutation.isPending}
+                >
+                  Reject
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {booking.payment?.proofFileId ? (
+            <span className="text-xs text-slate-500">
+              File ID: {booking.payment.proofFileId}
+            </span>
+          ) : null}
+        </div>
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-2">
+          <button
+            className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+            onClick={handleForceCancel}
+            disabled={isTerminal || cancelMutation.isPending}
+          >
+            Force Cancel
+          </button>
+          <button
+            className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+            onClick={handleOverrideSchedule}
+            disabled={!nextSession || overrideMutation.isPending}
+          >
+            Override Jadwal
+          </button>
+          <div>
+            <button
+              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+              onClick={handleUploadClick}
+              disabled={!canUploadProof || uploading}
+            >
+              {uploading ? "Mengunggah..." : "Upload Bukti"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
