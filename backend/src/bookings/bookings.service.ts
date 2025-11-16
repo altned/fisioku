@@ -32,8 +32,9 @@ import {
 } from './interfaces/booking-response.interface';
 import { ChatService } from '../chat/chat.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { FilesService } from '../files/files.service';
 
-type BookingWithRelations = Booking & {
+export type BookingWithRelations = Booking & {
   patient: User & { patientProfile: PatientProfile | null };
   therapist: User & { therapistProfile: TherapistProfile | null };
   package: TherapyPackage;
@@ -59,7 +60,16 @@ export class BookingsService {
     private readonly prisma: PrismaService,
     private readonly chatService: ChatService,
     private readonly notificationsService: NotificationsService,
+    private readonly filesService: FilesService,
   ) {}
+
+  get bookingRelations() {
+    return this.bookingInclude;
+  }
+
+  mapBookingResponse(booking: BookingWithRelations): BookingResponse {
+    return this.toResponse(booking);
+  }
 
   private readonly bookingInclude = {
     patient: {
@@ -245,13 +255,20 @@ export class BookingsService {
       throw new BadRequestException('Payment record not found.');
     }
 
+    const storedFile = await this.filesService.ensurePaymentProofUsable(
+      dto.fileId,
+      patientId,
+      { allowDifferentUploader: false },
+    );
+
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
         payment: {
           update: {
-            proofUrl: dto.proofUrl,
+            proofUrl: null,
+            proofFileId: storedFile.id,
             method: dto.method ?? booking.payment.method,
             status: PaymentStatus.WAITING_ADMIN_VERIFY,
             uploadedAt: new Date(),
@@ -391,6 +408,7 @@ export class BookingsService {
             status: booking.payment.status,
             method: booking.payment.method,
             proofUrl: booking.payment.proofUrl,
+            proofFileId: booking.payment.proofFileId,
             amount: booking.payment.amount.toString(),
             uploadedAt: booking.payment.uploadedAt,
             verifiedAt: booking.payment.verifiedAt,
@@ -458,6 +476,88 @@ export class BookingsService {
               },
             }
           : undefined,
+      },
+      include: this.bookingInclude,
+    });
+
+    const response = this.toResponse(updated as BookingWithRelations);
+    await this.notificationsService.notifyBookingStatusChange(response);
+    return response;
+  }
+
+  async cancelByAdmin(bookingId: string): Promise<BookingResponse> {
+    const booking = await this.findBookingOrThrow(bookingId);
+
+    if (
+      booking.status === BookingStatus.COMPLETED ||
+      booking.status === BookingStatus.CANCELLED_BY_ADMIN
+    ) {
+      throw new BadRequestException('Booking cannot be cancelled.');
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED_BY_ADMIN,
+        paymentDueAt: null,
+        sessions: {
+          updateMany: {
+            where: { bookingId },
+            data: { status: SessionStatus.CANCELLED },
+          },
+        },
+        payment: booking.payment
+          ? {
+              update: {
+                status: PaymentStatus.REJECTED,
+              },
+            }
+          : undefined,
+      },
+      include: this.bookingInclude,
+    });
+
+    const response = this.toResponse(updated as BookingWithRelations);
+    await this.notificationsService.notifyBookingStatusChange(response);
+    return response;
+  }
+
+  async attachPaymentProofByAdmin(
+    adminId: string,
+    bookingId: string,
+    dto: { fileId: string; method?: PaymentMethod },
+  ): Promise<BookingResponse> {
+    const booking = await this.findBookingOrThrow(bookingId);
+
+    if (booking.status !== BookingStatus.PAYMENT_PENDING) {
+      throw new BadRequestException(
+        'Payment proof cannot be attached for this booking.',
+      );
+    }
+
+    if (!booking.payment) {
+      throw new BadRequestException('Payment record not found.');
+    }
+
+    const storedFile = await this.filesService.ensurePaymentProofUsable(
+      dto.fileId,
+      adminId,
+      { allowDifferentUploader: true },
+    );
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
+        payment: {
+          update: {
+            proofUrl: null,
+            proofFileId: storedFile.id,
+            method: dto.method ?? booking.payment.method,
+            status: PaymentStatus.WAITING_ADMIN_VERIFY,
+            uploadedAt: new Date(),
+          },
+        },
       },
       include: this.bookingInclude,
     });

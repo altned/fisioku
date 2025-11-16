@@ -65,7 +65,13 @@ export type BookingListResponse = {
       therapistProfile?: { fullName: string } | null;
     };
     package: { name: string };
-    payment?: { status: string } | null;
+    payment?: { status: string; proofFileId?: string | null } | null;
+    sessions?: Array<{
+      id: string;
+      sessionNumber: number;
+      status: string;
+      scheduledAt?: string | null;
+    }>;
   }>;
   meta: {
     page: number;
@@ -84,6 +90,26 @@ export type TherapyPackage = {
   defaultExpiryDays?: number | null;
   isActive: boolean;
   createdAt: string;
+};
+
+export type AuditLogEntry = {
+  id: string;
+  action: string;
+  actor?: { id: string; email: string | null } | null;
+  targetType: string;
+  targetId: string;
+  metadata?: unknown;
+  createdAt: string;
+};
+
+export type AuditLogListResponse = {
+  data: AuditLogEntry[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 };
 
 export const adminApi = {
@@ -119,4 +145,52 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ approved }),
     }),
+  cancelBooking: (bookingId: string, payload: { reason?: string }) =>
+    apiFetch(`/api/v1/admin/bookings/${bookingId}/cancel`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  attachPaymentProof: (
+    bookingId: string,
+    payload: { fileId: string; method?: string },
+  ) =>
+    apiFetch(`/api/v1/admin/bookings/${bookingId}/payment-proof`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  overrideSession: (
+    bookingId: string,
+    sessionId: string,
+    payload: { scheduledAt: string },
+  ) =>
+    apiFetch(
+      `/api/v1/admin/bookings/${bookingId}/sessions/${sessionId}/schedule`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      },
+    ),
+  auditLogs: (params: { page?: number; limit?: number }) =>
+    apiFetch<AuditLogListResponse>("/api/v1/admin/audit-logs", {
+      searchParams: params,
+    }),
 };
+
+export async function uploadPaymentProofFile(file: File) {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${API_BASE}/api/v1/files/payment-proof`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || response.statusText);
+  }
+
+  return (await response.json()) as { fileId: string };
+}

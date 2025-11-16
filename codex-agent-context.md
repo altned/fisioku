@@ -65,11 +65,16 @@ match /chats/{chatId} {
 ## 3. Business Rules Utama
 1. Pasien pilih terapis → paket → isi keluhan → jadwal → consent → booking (`WAITING_THERAPIST_CONFIRM`)
 2. Terapis konfirmasi → status `PAYMENT_PENDING` (masa berlaku 1 jam)
-3. Pasien unggah bukti bayar → `WAITING_ADMIN_VERIFY_PAYMENT`
+3. Pasien unggah bukti bayar ke storage server internal Fisioku lewat endpoint upload (`POST /files/payment-proof`) yang mengembalikan `fileId` + URL signed satu kali; FE lalu memanggil `PATCH /bookings/:id/payment-proof` dengan metadata file tersebut → status `WAITING_ADMIN_VERIFY_PAYMENT`.
 4. Admin verifikasi → status `PAID`
-5. Sesi pertama berlangsung, sesi berikutnya harus dengan terapis yang sama
+5. Sesi pertama berlangsung, sesi berikutnya harus dengan terapis yang sama, dijadwalkan via endpoint scheduler booking; status otomatis pindah `PAID → IN_PROGRESS → COMPLETED` oleh service scheduler setelah semua sesi bertandai selesai.
 6. Chat aktif selama sesi + 24 jam, lalu read-only
 7. Setelah seluruh sesi selesai → pasien memberi review → booking ditutup
+
+**Aturan Tambahan Pasca Pembayaran**
+- Booking yang sudah `PAID` wajib memiliki minimal satu `booking_session` berstatus `SCHEDULED`; terapis memakai endpoint `PATCH /booking-sessions/:id/schedule` untuk reschedule dengan validasi konflik availability.
+- Scheduler harian mengecek sesi terakhir berstatus `COMPLETED`; 24 jam setelah waktu selesai terakhir, booking dipindah ke `COMPLETED`, chat thread dikunci otomatis, dan review dibuka untuk pasien.
+- Pembatalan/reschedule setelah `PAID` harus meninggalkan jejak audit (admin override atau kesepakatan pasien–terapis) dan selalu mengirim notifikasi ke kedua pihak.
 
 ---
 
@@ -172,7 +177,8 @@ Status terminal: `CANCELLED`
   - React Native flow: pilih terapis → paket → jadwal → consent
 - **Konfirmasi & Pembayaran**
   - Endpoint konfirmasi terapis, timer payment
-  - Upload bukti bayar (signed URL) + status WAITING_ADMIN_VERIFY_PAYMENT
+  - Endpoint upload file internal (`POST /files/payment-proof`) yang menaruh bukti transfer di storage server (local disk/S3 kompatibel) + sanitasi mime/ukuran + response URL satu kali
+  - Pasien menautkan `fileId` ke booking via `PATCH /bookings/:id/payment-proof` hingga status WAITING_ADMIN_VERIFY_PAYMENT
   - Admin panel sederhana untuk verifikasi + update status PAID
 - **Chat & Notifikasi**
   - Struktur Firestore `chat_threads`, `chat_messages`
@@ -182,11 +188,12 @@ Status terminal: `CANCELLED`
 - **Review & Notes**
   - Terapis isi session note per sesi
   - Pasien beri rating + comment setelah COMPLETED
+  - Scheduler `booking-progress` yang memindahkan status `PAID → IN_PROGRESS → COMPLETED`, mengunci chat 24 jam pasca sesi terakhir, dan memicu notifikasi/reschedule bila ada penyimpangan
   - Tampilkan histori review di profil terapis
 - **Admin CMS**
   - Dashboard Next.js dengan metric dasar (booking status breakdown)
   - CRUD therapy packages, manajemen user (activate/deactivate)
-  - Audit log tampilan read-only
+  - ✅ Audit log tampilan read-only + halaman tindakan khusus (force cancel, override jadwal, unggah bukti bayar manual dari pihak admin)
 - **QA & Launch**
   - Test plan: unit (backend), integration (booking flow), e2e (RN)
   - Deploy backend (Cloud Run), file storage (GCS), verifikasi DNS
@@ -200,7 +207,9 @@ Status terminal: `CANCELLED`
 | --- | --- | --- |
 | Consent belum disimpan | Kepatuhan hukum lemah | ✅ Tambah tabel `consents` + endpoint `POST /bookings/:id/consent` yang menyimpan teks versi + meta (ip/user-agent). FE tinggal menampilkan teks terbaru sebelum submit. |
 | Deadline pembayaran tidak otomatis expire | Booking menggantung lama | ✅ Scheduler (Nest Schedule) memeriksa `PAYMENT_PENDING` lewat dari `paymentDueAt`, ubah booking ke `PAYMENT_EXPIRED` dan tandai payment `REJECTED`, juga mengirim notifikasi status. |
+| Bukti transfer diunggah langsung dari FE ke luar server | Bukti bisa dihapus user, audit lemah | ✅ Sediakan service upload internal `POST /files/payment-proof` yang menyimpan file di storage server Fisioku, memberi `fileId`, dan hanya exposing URL signed singkat ke admin. FE wajib menyertakan `fileId` saat update booking. |
 | Jadwal terapis belum bisa menolak slot | Risiko double-book | ✅ Tambah tabel `TherapistAvailability` + endpoint RN untuk menambah slot, serta validasi booking yang menolak jadwal bentrok. |
+| Transisi `PAID → IN_PROGRESS → COMPLETED` belum terdefinisi | Booking bisa stagnan atau lompat status | Scheduler `booking-progress` menandai sesi aktif, memindah status berdasarkan `booking_sessions`, mengunci chat 24 jam pasca sesi terakhir, dan membuka review. Terapis/admin hanya boleh ubah jadwal melalui endpoint yang otomatis mencatat audit + kirim notifikasi. |
 | Chat belum otomatis read-only 24 jam pasca sesi | Chat tetap aktif terlalu lama | Setelah sesi terakhir `COMPLETED`, scheduler set `chatThread.lockedAt = completedAt + 24h`. Firestore rules + RN app blokir kirim pesan jika `lockedAt` ada. |
-| Audit admin belum ada | Sulit telusur tindakan | Middleware `AuditService.record()` menyimpan setiap aksi admin (verifikasi pembayaran, toggle paket) ke tabel `audit_logs` untuk referensi. |
+| Audit admin belum ada | Sulit telusur tindakan | ✅ Middleware `AuditService.record()` menyimpan setiap aksi admin (verifikasi pembayaran, toggle paket, force cancel, reupload bukti) ke tabel `audit_logs` + UI admin untuk memantau. |
 | Mobile flow belum teruji end-to-end | Risiko regression saat go-live | Siapkan skrip API/UAT (Postman/Playwright) hingga RN app siap; gunakan hook React Query seragam agar logic konsisten. |

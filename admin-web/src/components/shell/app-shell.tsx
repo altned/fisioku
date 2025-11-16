@@ -9,6 +9,7 @@ const navItems = [
   { href: "/", label: "Summary" },
   { href: "/bookings", label: "Bookings" },
   { href: "/packages", label: "Packages" },
+  { href: "/audit-logs", label: "Audit Logs" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

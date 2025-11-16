@@ -13,6 +13,7 @@ import { SessionNotesModule } from './session-notes/session-notes.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { AdminModule } from './admin/admin.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { FilesModule } from './files/files.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     SessionNotesModule,
     ReviewsModule,
     AdminModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [RolesGuard],

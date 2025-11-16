@@ -185,11 +185,37 @@ describe('App (e2e)', () => {
     const noteBody = noteRes.body as { content: string };
     expect(noteBody.content).toEqual('Catatan sesi awal');
 
-    const proofUrl = `https://storage.googleapis.com/fisioku/${bookingBody.id}.jpg`;
+    const scheduleRes = await request(app.getHttpServer())
+      .patch(`/api/v1/booking-sessions/${sessionId}/schedule`)
+      .set('Authorization', `Bearer ${therapistToken}`)
+      .send({
+        scheduledAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      });
+
+    expect(scheduleRes.status).toBe(200);
+
+    const completeRes = await request(app.getHttpServer())
+      .patch(`/api/v1/booking-sessions/${sessionId}/complete`)
+      .set('Authorization', `Bearer ${therapistToken}`);
+
+    expect(completeRes.status).toBe(200);
+
+    const uploadRes = await request(app.getHttpServer())
+      .post('/api/v1/files/payment-proof')
+      .set('Authorization', `Bearer ${patientToken}`)
+      .attach('file', Buffer.from('dummy-image'), {
+        filename: 'proof.jpg',
+        contentType: 'image/jpeg',
+      });
+
+    expect(uploadRes.status).toBe(201);
+    const uploadBody = uploadRes.body as { fileId: string };
+    expect(uploadBody.fileId).toBeDefined();
+
     const proofRes = await request(app.getHttpServer())
       .patch(`/api/v1/bookings/${bookingBody.id}/payment-proof`)
       .set('Authorization', `Bearer ${patientToken}`)
-      .send({ proofUrl });
+      .send({ fileId: uploadBody.fileId });
 
     expect(proofRes.status).toBe(200);
     const proofBody = proofRes.body as BookingE2EResponse;
