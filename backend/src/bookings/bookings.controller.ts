@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Param,
@@ -31,11 +32,28 @@ import type { Request } from 'express';
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT)
+  listMine(@CurrentUser() user: ActiveUserData) {
+    return this.bookingsService.listForPatient(user.id);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.PATIENT)
   create(@CurrentUser() user: ActiveUserData, @Body() dto: CreateBookingDto) {
     return this.bookingsService.create(user.id, dto);
+  }
+
+  @Patch(':bookingId/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT)
+  cancel(
+    @CurrentUser() user: ActiveUserData,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+  ) {
+    return this.bookingsService.cancelByPatient(user.id, bookingId);
   }
 
   @Patch(':bookingId/therapist-confirm')

@@ -151,16 +151,16 @@ Status terminal: `CANCELLED`
 
 ## 9. Tahapan Pengembangan MVP
 
-| Tahap | Tujuan Utama | Deliverable | Dependencies | Catatan |
-| --- | --- | --- | --- | --- |
-| 0. Persiapan | Validasi requirement & toolchain | Dokumen arsitektur final, repo monorepo/multi-repo siap, CI lint/test dasar | - | Pastikan akses Firebase, GCP, DB sudah tersedia |
-| 1. Fondasi Backend | Autentikasi & role | Service NestJS + Prisma + JWT + RBAC; migrasi schema dasar (users, profiles) | Tahap 0 | Sertakan automation seeding minimal 1 user per role |
-| 2. Directory & Booking Core | Menjalankan alur booking dasar | Endpoint therapist directory, booking creation, state WAITING_THERAPIST_CONFIRM, session stub | Backend tahap 1 | Mulai integrasi React Native untuk list terapis |
-| 3. Konfirmasi & Pembayaran | Menutup loop booking → payment | Endpoint konfirmasi terapis, upload bukti bayar (GCS), admin verify payment, status PAID | Tahap 2 | Tambah audit trail untuk admin verify |
-| 4. Chat & Notifikasi | Komunikasi & engagement | Firestore rules + RN chat UI, FCM push (booking status) | Tahap 3 | Uji locking chat ke pair patient-therapist |
-| 5. Review & Notes | Post-session insight | Endpoint review pasien, catatan terapis, sesi IN_PROGRESS → COMPLETED | Tahap 3 | Pastikan notes & review hanya muncul setelah sesi |
-| 6. Admin CMS | Operasional dasar admin | Next.js dashboard: daftar booking, users, paket terapi CRUD | Tahap 2 | Gunakan React Query + proteksi route admin |
-| 7. QA & Launch | Stabilitas & rilis internal | Checklist QA, skenario UAT, build RN (Android/iOS) + deploy backend ke Cloud Run | Semua tahap | Sediakan rollback plan & monitoring dasar |
+| Tahap | Tujuan Utama | Deliverable | Dependencies | Catatan | Status |
+| --- | --- | --- | --- | --- | --- |
+| 0. Persiapan | Validasi requirement & toolchain | Dokumen arsitektur final, repo monorepo/multi-repo siap, CI lint/test dasar | - | Pastikan akses Firebase, GCP, DB sudah tersedia | ✅ Selesai |
+| 1. Fondasi Backend | Autentikasi & role | Service NestJS + Prisma + JWT + RBAC; migrasi schema dasar (users, profiles) | Tahap 0 | Sertakan automation seeding minimal 1 user per role | ✅ Selesai (Auth + RBAC + seed) |
+| 2. Directory & Booking Core | Menjalankan alur booking dasar | Endpoint therapist directory, booking creation, state WAITING_THERAPIST_CONFIRM, session stub | Backend tahap 1 | Mulai integrasi React Native untuk list terapis | ⚠️ Partial – FE pasien sudah booking end-to-end, tetapi `GET /therapists` masih pakai `@Body` (query tak terbaca) dan validasi jadwal belum memakai tabel availability |
+| 3. Konfirmasi & Pembayaran | Menutup loop booking → payment | Endpoint konfirmasi terapis, upload bukti bayar (GCS), admin verify payment, status PAID | Tahap 2 | Tambah audit trail untuk admin verify | ⚠️ Partial – Backend/admin sudah lengkap, namun belum ada endpoint/listing untuk terapis melihat & mengonfirmasi booking di FE |
+| 4. Chat & Notifikasi | Komunikasi & engagement | Firestore rules + RN chat UI, FCM push (booking status) | Tahap 3 | Uji locking chat ke pair patient-therapist | ⛔ Belum dimulai di mobile (tidak ada modul chat/FCM); backend baru sebatas metadata thread + push hook |
+| 5. Review & Notes | Post-session insight | Endpoint review pasien, catatan terapis, sesi IN_PROGRESS → COMPLETED | Tahap 3 | Pastikan notes & review hanya muncul setelah sesi | ⚠️ Backend tersedia (review/note + scheduler), FE & admin belum memanggil/menampilkan sama sekali |
+| 6. Admin CMS | Operasional dasar admin | Next.js dashboard: daftar booking, users, paket terapi CRUD | Tahap 2 | Gunakan React Query + proteksi route admin | ⚠️ Partial – Summary/Bookings/Packages/Audit sudah ada, tapi user management (activate/deactivate) belum tersedia |
+| 7. QA & Launch | Stabilitas & rilis internal | Checklist QA, skenario UAT, build RN (Android/iOS) + deploy backend ke Cloud Run | Semua tahap | Sediakan rollback plan & monitoring dasar | ⛔ Belum dimulai (baru ada QA checklist manual awal di mobile) |
 
 ### Detail Aktivitas per Tahap
 - **Persiapan**
@@ -175,29 +175,37 @@ Status terminal: `CANCELLED`
   - Terapis directory (filter lokasi/spesialisasi dasar)
   - Booking DTO + validation, state WAITING_THERAPIST_CONFIRM
   - React Native flow: pilih terapis → paket → jadwal → consent
+  - ✅ Pondasi app React Native (Expo) untuk login & fetch profil user
+  - ✅ Navigasi mobile + daftar terapis & form booking pasien
+  - ⚠️ Bug: controller masih membaca query filter dari body sehingga pencarian tidak berfungsi, dan validasi bentrok jadwal belum memanfaatkan `therapist_availabilities`
 - **Konfirmasi & Pembayaran**
   - Endpoint konfirmasi terapis, timer payment
   - Endpoint upload file internal (`POST /files/payment-proof`) yang menaruh bukti transfer di storage server (local disk/S3 kompatibel) + sanitasi mime/ukuran + response URL satu kali
   - Pasien menautkan `fileId` ke booking via `PATCH /bookings/:id/payment-proof` hingga status WAITING_ADMIN_VERIFY_PAYMENT
   - Admin panel sederhana untuk verifikasi + update status PAID
+  - ⚠️ Gap: terapis belum memiliki daftar booking & aksi konfirmasi/reschedule di aplikasi front-end
 - **Chat & Notifikasi**
   - Struktur Firestore `chat_threads`, `chat_messages`
   - RN chat UI, listener realtime, push notif status booking/chat
   - Pengetesan rule Firestore sesuai snippet keamanan
   - ✅ Backend chat thread metadata + registrasi FCM token + push trigger booking status
+  - ⛔ Mobile belum mengintegrasikan Firebase/Firestore/FCM sama sekali
 - **Review & Notes**
   - Terapis isi session note per sesi
   - Pasien beri rating + comment setelah COMPLETED
   - Scheduler `booking-progress` yang memindahkan status `PAID → IN_PROGRESS → COMPLETED`, mengunci chat 24 jam pasca sesi terakhir, dan memicu notifikasi/reschedule bila ada penyimpangan
   - Tampilkan histori review di profil terapis
+  - ⚠️ Endpoint sudah ada di backend, tetapi belum dihubungkan ke FE/admin sehingga review & catatan tidak pernah dibuat/ditampilkan
 - **Admin CMS**
   - Dashboard Next.js dengan metric dasar (booking status breakdown)
   - CRUD therapy packages, manajemen user (activate/deactivate)
   - ✅ Audit log tampilan read-only + halaman tindakan khusus (force cancel, override jadwal, unggah bukti bayar manual dari pihak admin)
+  - ⚠️ Manajemen user (aktif/nonaktif) + overview therapist/patient belum dibuat
 - **QA & Launch**
   - Test plan: unit (backend), integration (booking flow), e2e (RN)
   - Deploy backend (Cloud Run), file storage (GCS), verifikasi DNS
   - Soft launch ke user internal, kumpulkan feedback
+  - 📄 QA catatan awal untuk mobile tersedia di `mobile/QA_PLAN.md`
 
 ---
 
@@ -213,3 +221,31 @@ Status terminal: `CANCELLED`
 | Chat belum otomatis read-only 24 jam pasca sesi | Chat tetap aktif terlalu lama | Setelah sesi terakhir `COMPLETED`, scheduler set `chatThread.lockedAt = completedAt + 24h`. Firestore rules + RN app blokir kirim pesan jika `lockedAt` ada. |
 | Audit admin belum ada | Sulit telusur tindakan | ✅ Middleware `AuditService.record()` menyimpan setiap aksi admin (verifikasi pembayaran, toggle paket, force cancel, reupload bukti) ke tabel `audit_logs` + UI admin untuk memantau. |
 | Mobile flow belum teruji end-to-end | Risiko regression saat go-live | Siapkan skrip API/UAT (Postman/Playwright) hingga RN app siap; gunakan hook React Query seragam agar logic konsisten. |
+| `GET /therapists` membaca filter dari body | Filter kota/spesialisasi tidak berfungsi di FE | Pindahkan DTO ke query (`@Query()` + `ValidationPipe`) dan sesuaikan klien agar benar-benar mengirim parameter pencarian |
+| Terapis tidak punya daftar/aksi booking di FE | Tahap konfirmasi pembayaran terhenti | Tambah endpoint list booking untuk terapis, halaman/tabs khusus terapis di mobile, serta aksi `accept/reject` + schedule |
+| Firebase/FCM belum terpasang di mobile | Chat, push status, dan locking tidak bisa diuji | Tambahkan setup Firebase (app config, messaging, Firestore), registrasi token lewat `/notifications/tokens`, dan UI chat (mis. GiftedChat/custom) |
+| Review & session note tidak terekspos | Tidak ada feedback pasca terapi | Tambahkan layar review pasien + form catatan terapis, tampilkan riwayat review di profil terapis/admin |
+| Admin CMS belum bisa kelola user | Aktivasi/suspensi manual via DB | Tambah halaman Users (list + toggle status) serta endpoint di backend yang mencatat audit |
+| QA/CI belum ada | Sulit pantau regresi | Siapkan workflow lint+test minimal (backend unit test, `tsc --noEmit` mobile/admin) dan perluas `mobile/QA_PLAN.md` menjadi rencana UAT multi role |
+
+---
+
+## 11. Flow Tahapan Pengerjaan Lanjutan
+1. **Perbaiki Fondasi Directory & Booking**
+   - Refactor `GET /therapists` agar memakai query params + validasi.
+   - Implementasikan pemeriksaan slot terhadap `therapist_availabilities` dan blokir bentrok.
+   - Tambahkan endpoint listing booking untuk terapis serta test otomatis dasar (service + e2e).
+2. **Lengkapi Konfirmasi & Pembayaran**
+   - Bangun UI terapis di mobile (tab khusus) untuk melihat booking masuk, aksi terima/tolak, serta menjadwalkan ulang sesi.
+   - Tambahkan notifikasi/in-app state update setelah terapis mengubah status.
+   - Lengkapi admin CMS dengan modul pengguna (activate/deactivate + audit).
+3. **Implementasi Chat & Notifikasi**
+   - Integrasi Firebase di mobile (Firestore + Messaging), buat komponen chat, dan registrasi token menggunakan endpoint backend.
+   - Validasi Firestore rules menggunakan akun pasien/terapis berbeda dan otomatis lock thread sesuai scheduler.
+4. **Rilis Review & Session Notes**
+   - Tambahkan layar review pasien (hanya muncul ketika booking COMPLETED) dan form catatan terapis untuk tiap sesi.
+   - Tampilkan agregasi rating di profil terapis (mobile + admin), sertakan filter review di admin CMS.
+5. **QA, Automation, & Launch Prep**
+   - Tambah workflow lint/test lintas paket, tulis test E2E smoke untuk booking alur utama.
+   - Finalisasi QA checklist untuk mobile, admin, dan backend, kemudian siapkan build Expo + deployment backend (Cloud Run) beserta monitoring/logging dasar.
+   - Jalankan UAT multi-role sebelum soft launch.

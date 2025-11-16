@@ -4,6 +4,7 @@
 
 - `backend/` – layanan NestJS + Prisma untuk autentikasi dasar & manajemen pengguna.
 - `admin-web/` – dashboard Next.js untuk operasional admin.
+- `mobile/` – aplikasi React Native (Expo) dasar untuk pasien/terapis, saat ini berfokus pada login + fetch profil.
 - `codex-agent-context.md` – konteks proyek dan tahapan MVP.
 
 ## Menjalankan Backend
@@ -57,3 +58,16 @@ npm run dev -- -p 3001
 - Login dilakukan lewat halaman `/login` menggunakan akun admin dari backend; token akan tersimpan di browser.
 
 Halaman yang tersedia: summary dashboard (`/`), daftar booking (`/bookings`) termasuk aksi verifikasi pembayaran, dan manajemen paket (`/packages`).
+
+## Menjalankan Mobile App
+
+```bash
+cd mobile
+cp .env.example .env # set EXPO_PUBLIC_API_URL ke backend Anda
+npm install
+npm run start
+```
+
+- Jalankan backend terlebih dahulu dan pastikan `EXPO_PUBLIC_API_URL` mengarah ke host yang dapat dijangkau simulator/emulator.
+- Untuk login awal, gunakan akun seed (`patient@fisioku.local` atau `therapist@fisioku.local`).
+- Fitur saat ini: autentikasi dasar, fetch profil, daftar terapis + pencarian, detail terapis, form booking terhubung API (create + consent otomatis), daftar booking terbaru, serta layar booking yang memungkinkan upload bukti bayar & pembatalan pasien.

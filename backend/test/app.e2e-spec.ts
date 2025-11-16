@@ -104,6 +104,12 @@ describe('App (e2e)', () => {
     const patientToken = patientBody.accessToken;
     expect(patientToken).toBeDefined();
 
+    const packagesRes = await request(app.getHttpServer())
+      .get('/api/v1/packages')
+      .set('Authorization', `Bearer ${patientToken}`);
+    expect(packagesRes.status).toBe(200);
+    const availablePackages = packagesRes.body as Array<{ id: string }>;
+
     const therapist = await prisma.therapistProfile.findFirst({
       include: { user: true },
     });
@@ -111,15 +117,17 @@ describe('App (e2e)', () => {
       throw new Error('Therapist seed not found');
     }
 
-    const therapyPackage = await prisma.therapyPackage.create({
-      data: {
-        name: `Test Package ${Date.now()}`,
-        sessionCount: 1,
-        price: 250_000,
-        description: 'Integration test package',
-        isActive: true,
-      },
-    });
+    const therapyPackage =
+      availablePackages[0] ??
+      (await prisma.therapyPackage.create({
+        data: {
+          name: `Test Package ${Date.now()}`,
+          sessionCount: 1,
+          price: 250_000,
+          description: 'Integration test package',
+          isActive: true,
+        },
+      }));
 
     const preferredSchedule = new Date(
       Date.now() + 60 * 60 * 1000,
@@ -280,6 +288,16 @@ describe('App (e2e)', () => {
     expect(pkgRes.status).toBe(201);
     const pkgBody = pkgRes.body as { id: string };
     const pkgId = pkgBody.id;
+
+    const myBookingsRes = await request(app.getHttpServer())
+      .get('/api/v1/bookings')
+      .set('Authorization', `Bearer ${patientToken}`);
+    expect(myBookingsRes.status).toBe(200);
+    const myBookings = myBookingsRes.body as BookingE2EResponse[];
+    expect(Array.isArray(myBookings)).toBe(true);
+    expect(myBookings.some((booking) => booking.id === bookingBody.id)).toBe(
+      true,
+    );
 
     await prisma.booking.delete({
       where: { id: bookingBody.id },

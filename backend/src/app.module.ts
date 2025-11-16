@@ -14,6 +14,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { AdminModule } from './admin/admin.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { FilesModule } from './files/files.module';
+import { PackagesModule } from './packages/packages.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { FilesModule } from './files/files.module';
     ReviewsModule,
     AdminModule,
     FilesModule,
+    PackagesModule,
   ],
   controllers: [AppController],
   providers: [RolesGuard],
