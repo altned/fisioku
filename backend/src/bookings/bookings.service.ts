@@ -13,6 +13,8 @@ import {
   Payment,
   PaymentMethod,
   PaymentStatus,
+  Prisma,
+  SessionNote,
   SessionStatus,
   TherapistProfile,
   TherapyPackage,
@@ -34,11 +36,15 @@ import { ChatService } from '../chat/chat.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from '../files/files.service';
 
+type BookingSessionWithNote = BookingSession & {
+  note: SessionNote | null;
+};
+
 export type BookingWithRelations = Booking & {
   patient: User & { patientProfile: PatientProfile | null };
   therapist: User & { therapistProfile: TherapistProfile | null };
   package: TherapyPackage;
-  sessions: BookingSession[];
+  sessions: BookingSessionWithNote[];
   payment: Payment | null;
   review: Review | null;
   consent: Consent | null;
@@ -79,7 +85,7 @@ export class BookingsService {
       include: { therapistProfile: true },
     },
     package: true,
-    sessions: true,
+    sessions: { include: { note: true } },
     payment: true,
     review: true,
     consent: true,
@@ -140,6 +146,8 @@ export class BookingsService {
     if (!therapyPackage || !therapyPackage.isActive) {
       throw new BadRequestException('Therapy package is unavailable.');
     }
+
+    await this.ensureTherapistAvailability(therapist.id, preferredSchedule);
 
     const overlappingBooking = await this.findOverlappingBooking(
       dto.therapistId,
@@ -381,6 +389,11 @@ export class BookingsService {
     return {
       id: booking.id,
       patientId: booking.patientId,
+      patient: {
+        id: booking.patient.id,
+        email: booking.patient.email,
+        fullName: booking.patient.patientProfile?.fullName,
+      },
       therapist: {
         id: booking.therapistId,
         fullName: booking.therapist.therapistProfile?.fullName ?? '',
@@ -435,11 +448,14 @@ export class BookingsService {
     };
   }
 
-  private mapSession = (session: BookingSession): BookingSessionResponse => ({
+  private mapSession = (
+    session: BookingSessionWithNote,
+  ): BookingSessionResponse => ({
     id: session.id,
     sessionNumber: session.sessionNumber,
     scheduledAt: session.scheduledAt,
     status: session.status,
+    note: session.note?.content ?? null,
   });
 
   private async findBookingOrThrow(id: string): Promise<BookingWithRelations> {
@@ -629,6 +645,65 @@ export class BookingsService {
     const deadline = new Date();
     deadline.setHours(deadline.getHours() + PAYMENT_DEADLINE_HOURS);
     return deadline;
+  }
+
+  async listForTherapist(
+    therapistId: string,
+    status?: BookingStatus,
+  ): Promise<BookingResponse[]> {
+    const where: Prisma.BookingWhereInput = { therapistId };
+    if (status) {
+      where.status = status;
+    }
+
+    const bookings = await this.prisma.booking.findMany({
+      where,
+      include: this.bookingInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return bookings.map((booking) =>
+      this.toResponse(booking as BookingWithRelations),
+    );
+  }
+
+  private async ensureTherapistAvailability(
+    therapistId: string,
+    preferredSchedule: Date,
+  ) {
+    const availability = await this.prisma.therapistAvailability.findFirst({
+      where: {
+        therapistId,
+        startTime: { lte: preferredSchedule },
+        endTime: { gt: preferredSchedule },
+      },
+    });
+
+    if (!availability) {
+      throw new BadRequestException(
+        'Therapist is not available at the selected time.',
+      );
+    }
+
+    const conflictingSession = await this.prisma.bookingSession.findFirst({
+      where: {
+        booking: {
+          therapistId,
+          status: { in: PAYMENT_BLOCKED_STATUSES },
+        },
+        scheduledAt: {
+          gte: availability.startTime,
+          lt: availability.endTime,
+        },
+        status: { not: SessionStatus.CANCELLED },
+      },
+    });
+
+    if (conflictingSession) {
+      throw new BadRequestException(
+        'Therapist is already booked near the selected time.',
+      );
+    }
   }
 
   private async findOverlappingBooking(

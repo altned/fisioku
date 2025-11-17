@@ -95,6 +95,13 @@ function BookingRow({ booking }: { booking: BookingRowData }) {
     void queryClient.invalidateQueries({ queryKey: ["bookings"] });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const chatQuery = useQuery({
+    queryKey: ["booking-chat", booking.id],
+    queryFn: () => adminApi.chatMessages(booking.id),
+    enabled: showChat,
+  });
 
   const verifyMutation = useMutation({
     mutationFn: (approved: boolean) =>
@@ -186,6 +193,7 @@ function BookingRow({ booking }: { booking: BookingRowData }) {
   };
 
   return (
+    <>
     <tr className="border-t text-slate-700">
       <td className="px-4 py-3">
         {new Date(booking.createdAt).toLocaleString("id-ID")}
@@ -196,6 +204,11 @@ function BookingRow({ booking }: { booking: BookingRowData }) {
       <td className="px-4 py-3">
         {booking.therapist.therapistProfile?.fullName ??
           booking.therapist.email}
+        <div className="text-xs text-slate-500">
+          {booking.therapist.averageRating
+            ? `⭐ ${booking.therapist.averageRating.toFixed(1)} (${booking.therapist.reviewCount ?? 0})`
+            : "Belum ada rating"}
+        </div>
       </td>
       <td className="px-4 py-3">{booking.package.name}</td>
       <td className="px-4 py-3 font-medium">
@@ -273,8 +286,79 @@ function BookingRow({ booking }: { booking: BookingRowData }) {
               onChange={handleFileChange}
             />
           </div>
+          <button
+            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+            onClick={() => setShowSessions((prev) => !prev)}
+          >
+            {showSessions ? "Sembunyikan Catatan" : "Catatan Sesi"}
+          </button>
+          <button
+            className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+            onClick={() => setShowChat((prev) => !prev)}
+          >
+            {showChat ? "Tutup Chat" : "Lihat Chat"}
+          </button>
         </div>
       </td>
     </tr>
+    {showSessions ? (
+      <tr className="border-t bg-slate-50 text-slate-600">
+        <td className="px-4 py-3 text-xs" colSpan={7}>
+          <div className="space-y-3">
+            {booking.sessions && booking.sessions.length > 0 ? (
+              booking.sessions.map((session) => (
+                <div key={session.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Sesi #{session.sessionNumber} • {session.status}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {session.scheduledAt
+                      ? new Date(session.scheduledAt).toLocaleString("id-ID")
+                      : "Belum dijadwalkan"}
+                  </div>
+                  {session.note?.content ? (
+                    <p className="mt-1 text-sm text-slate-700">
+                      Catatan: {session.note.content}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-400">
+                      Belum ada catatan untuk sesi ini.
+                    </p>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-500">Tidak ada sesi terdaftar.</p>
+            )}
+          </div>
+        </td>
+      </tr>
+    ) : null}
+    {showChat ? (
+      <tr className="border-t bg-white text-slate-600">
+        <td className="px-4 py-3 text-xs" colSpan={7}>
+          {chatQuery.isLoading ? (
+            <p>Memuat chat...</p>
+          ) : chatQuery.isError ? (
+            <p className="text-red-500">Gagal memuat chat.</p>
+          ) : chatQuery.data && chatQuery.data.length > 0 ? (
+            <div className="space-y-3">
+              {chatQuery.data.map((msg) => (
+                <div key={msg.id} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div className="text-xs text-slate-500">
+                    {msg.sender.name} •{" "}
+                    {new Date(msg.sentAt).toLocaleString("id-ID")}
+                  </div>
+                  <p className="text-sm text-slate-800">{msg.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Belum ada pesan.</p>
+          )}
+        </td>
+      </tr>
+    ) : null}
+    </>
   );
 }

@@ -17,6 +17,8 @@ export interface TherapistSummary {
   experienceYears?: number | null;
   photoUrl?: string | null;
   gender?: string | null;
+  averageRating?: number | null;
+  reviewCount: number;
 }
 
 export interface TherapistListResponse {
@@ -93,16 +95,42 @@ export class TherapistsService {
       this.prisma.therapistProfile.count({ where }),
     ]);
 
+    const therapistIds = items.map((profile) => profile.userId);
+    const ratingMap: Record<
+      string,
+      { averageRating: number | null; reviewCount: number }
+    > = {};
+
+    if (therapistIds.length) {
+      const aggregates = await this.prisma.review.groupBy({
+        by: ['therapistId'],
+        where: { therapistId: { in: therapistIds } },
+        _avg: { rating: true },
+        _count: { _all: true },
+      });
+      for (const aggregate of aggregates) {
+        ratingMap[aggregate.therapistId] = {
+          averageRating: aggregate._avg.rating ?? null,
+          reviewCount: aggregate._count._all ?? 0,
+        };
+      }
+    }
+
     return {
-      data: items.map((profile) => ({
-        id: profile.userId,
-        fullName: profile.fullName,
-        city: profile.city,
-        specialties: profile.specialties,
-        experienceYears: profile.experienceYears,
-        photoUrl: profile.photoUrl,
-        gender: profile.gender,
-      })),
+      data: items.map((profile) => {
+        const rating = ratingMap[profile.userId];
+        return {
+          id: profile.userId,
+          fullName: profile.fullName,
+          city: profile.city,
+          specialties: profile.specialties,
+          experienceYears: profile.experienceYears,
+          photoUrl: profile.photoUrl,
+          gender: profile.gender,
+          averageRating: rating?.averageRating ?? null,
+          reviewCount: rating?.reviewCount ?? 0,
+        };
+      }),
       meta: {
         page,
         limit,

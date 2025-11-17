@@ -24,6 +24,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { ActiveUserData } from '../auth/interfaces/active-user-data.interface';
 import { ScheduleSessionDto } from '../bookings/dto/schedule-session.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
+import { ListUsersQueryDto } from './dto/list-users-query.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 @Controller({
   path: 'admin',
@@ -106,5 +108,26 @@ export class AdminController {
   @Get('audit-logs')
   listAuditLogs(@Query() query: ListAuditLogsQueryDto) {
     return this.adminService.listAuditLogs(query);
+  }
+
+  @Get('bookings/:bookingId/chat-messages')
+  listChatMessages(
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+  ) {
+    return this.adminService.listChatMessages(bookingId);
+  }
+
+  @Get('users')
+  listUsers(@Query() query: ListUsersQueryDto) {
+    return this.adminService.listUsers(query);
+  }
+
+  @Patch('users/:userId/status')
+  updateUserStatus(
+    @CurrentUser() user: ActiveUserData,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() dto: UpdateUserStatusDto,
+  ) {
+    return this.adminService.updateUserStatus(user.id, userId, dto);
   }
 }

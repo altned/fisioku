@@ -63,6 +63,8 @@ export type BookingListResponse = {
     therapist: {
       email: string;
       therapistProfile?: { fullName: string } | null;
+      averageRating?: number | null;
+      reviewCount?: number;
     };
     package: { name: string };
     payment?: { status: string; proofFileId?: string | null } | null;
@@ -71,6 +73,7 @@ export type BookingListResponse = {
       sessionNumber: number;
       status: string;
       scheduledAt?: string | null;
+      note?: { content: string } | null;
     }>;
   }>;
   meta: {
@@ -109,6 +112,17 @@ export type AuditLogListResponse = {
     limit: number;
     total: number;
     totalPages: number;
+  };
+};
+
+export type ChatMessageEntry = {
+  id: string;
+  message: string;
+  sentAt: string;
+  sender: {
+    id: string;
+    email: string;
+    name: string;
   };
 };
 
@@ -173,6 +187,30 @@ export const adminApi = {
   auditLogs: (params: { page?: number; limit?: number }) =>
     apiFetch<AuditLogListResponse>("/api/v1/admin/audit-logs", {
       searchParams: params,
+    }),
+  chatMessages: (bookingId: string) =>
+    apiFetch<ChatMessageEntry[]>(
+      `/api/v1/admin/bookings/${bookingId}/chat-messages`,
+    ),
+  users: (params: { page?: number; role?: string; status?: string; search?: string }) =>
+    apiFetch<{
+      data: Array<{
+        id: string;
+        email: string;
+        role: string;
+        status: string;
+        createdAt: string;
+        patientProfile?: { fullName?: string | null } | null;
+        therapistProfile?: { fullName?: string | null } | null;
+      }>;
+      meta: { page: number; limit: number; total: number; totalPages: number };
+    }>("/api/v1/admin/users", {
+      searchParams: params,
+    }),
+  updateUserStatus: (id: string, status: string) =>
+    apiFetch(`/api/v1/admin/users/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
 };
 

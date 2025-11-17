@@ -1,11 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   UseGuards,
-  Body,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -15,6 +16,7 @@ import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { ActiveUserData } from '../auth/interfaces/active-user-data.interface';
 import { LockChatDto } from './dto/lock-chat.dto';
+import { SendMessageDto } from './dto/send-message.dto';
 
 @Controller({
   path: 'chat/threads',
@@ -51,5 +53,17 @@ export class ChatController {
       bookingId: thread.bookingId,
       locked: Boolean(thread.lockedAt),
     };
+  }
+
+  @Post(':bookingId/messages')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.PATIENT, UserRole.THERAPIST)
+  async sendMessage(
+    @CurrentUser() user: ActiveUserData,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+    @Body() dto: SendMessageDto,
+  ) {
+    await this.chatService.sendMessage(bookingId, user.id, dto.message);
+    return { status: 'ok' };
   }
 }

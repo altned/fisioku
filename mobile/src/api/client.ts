@@ -77,6 +77,8 @@ export type TherapistSummary = {
   specialties: string[];
   experienceYears?: number | null;
   photoUrl?: string | null;
+  averageRating?: number | null;
+  reviewCount: number;
 };
 
 export type TherapyPackageSummary = {
@@ -86,11 +88,20 @@ export type TherapyPackageSummary = {
   price: number;
 };
 
-export type BookingSummary = {
+export type BookingResponse = {
   id: string;
   status: string;
   preferredSchedule: string;
+  paymentDueAt?: string | null;
   createdAt: string;
+  notesFromPatient?: string | null;
+  painLevel?: number | null;
+  patientId: string;
+  patient: {
+    id: string;
+    email: string;
+    fullName?: string | null;
+  };
   therapist: {
     id: string;
     fullName: string;
@@ -98,7 +109,22 @@ export type BookingSummary = {
   package: {
     id: string;
     name: string;
+    sessionCount: number;
+    price: string;
   };
+  sessions: Array<{
+    id: string;
+    sessionNumber: number;
+    scheduledAt?: string | null;
+    status: string;
+    note?: string | null;
+  }>;
+  review?: {
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+  } | null;
 };
 
 export const api = {
@@ -134,7 +160,11 @@ export const api = {
       body: JSON.stringify({ textVersion }),
     }),
   myBookings: (token: string) =>
-    apiFetch<BookingSummary[]>('/api/v1/bookings', {
+    apiFetch<BookingResponse[]>('/api/v1/bookings', {
+      token,
+    }),
+  myTherapistBookings: (token: string, params?: { status?: string }) =>
+    apiFetch<BookingResponse[]>(buildPath('/api/v1/bookings/assigned', params), {
       token,
     }),
   uploadBookingProof: (token: string, bookingId: string, fileId: string) =>
@@ -143,10 +173,81 @@ export const api = {
       token,
       body: JSON.stringify({ fileId }),
     }),
+  confirmBookingAsTherapist: (
+    token: string,
+    bookingId: string,
+    accept: boolean,
+  ) =>
+    apiFetch(`/api/v1/bookings/${bookingId}/therapist-confirm`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ accept }),
+    }),
   cancelBooking: (token: string, bookingId: string) =>
     apiFetch(`/api/v1/bookings/${bookingId}/cancel`, {
       method: 'PATCH',
       token,
+    }),
+  scheduleSession: (
+    token: string,
+    sessionId: string,
+    scheduledAt: string,
+  ) =>
+    apiFetch(`/api/v1/booking-sessions/${sessionId}/schedule`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ scheduledAt }),
+    }),
+  chatThread: (token: string, bookingId: string) =>
+    apiFetch<{
+      firestoreId: string;
+      bookingId: string;
+      locked: boolean;
+    }>(`/api/v1/chat/threads/${bookingId}`, {
+      token,
+    }),
+  registerNotificationToken: (
+    token: string,
+    payload: { token: string; platform?: string },
+  ) =>
+    apiFetch('/api/v1/notifications/tokens', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  removeNotificationToken: (token: string, deviceToken: string) =>
+    apiFetch(
+      `/api/v1/notifications/tokens/${encodeURIComponent(deviceToken)}`,
+      {
+        method: 'DELETE',
+        token,
+      },
+    ),
+  sendChatMessage: (token: string, bookingId: string, message: string) =>
+    apiFetch(`/api/v1/chat/threads/${bookingId}/messages`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ message }),
+    }),
+  submitReview: (
+    token: string,
+    bookingId: string,
+    payload: { rating: number; comment?: string },
+  ) =>
+    apiFetch(`/api/v1/bookings/${bookingId}/review`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  upsertSessionNote: (
+    token: string,
+    sessionId: string,
+    payload: { content: string },
+  ) =>
+    apiFetch(`/api/v1/booking-sessions/${sessionId}/note`, {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(payload),
     }),
 };
 

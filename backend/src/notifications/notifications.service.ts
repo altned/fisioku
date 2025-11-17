@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterNotificationTokenDto } from './dto/register-notification-token.dto';
 import { FirebaseAdminService } from './firebase-admin.service';
 import { BookingResponse } from '../bookings/interfaces/booking-response.interface';
+import { ChatThread } from '@prisma/client';
 
 @Injectable()
 export class NotificationsService {
@@ -73,6 +74,52 @@ export class NotificationsService {
     } catch (error) {
       this.logger.error(
         `Failed to send notification for booking ${booking.id}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  async notifyChatMessage(
+    thread: ChatThread,
+    senderId: string,
+    message: string,
+  ) {
+    const messaging = this.firebaseAdminService.messaging;
+    if (!messaging) {
+      this.logger.debug(
+        `Skipping chat notification; Firebase not configured.`,
+      );
+      return;
+    }
+    const recipients = [thread.patientId, thread.therapistId].filter(
+      (id) => id !== senderId,
+    );
+    if (!recipients.length) {
+      return;
+    }
+    const tokens = await this.prisma.notificationToken.findMany({
+      where: { userId: { in: recipients } },
+    });
+    if (!tokens.length) {
+      return;
+    }
+    const preview =
+      message.length > 80 ? `${message.slice(0, 77)}...` : message;
+    try {
+      await messaging.sendEachForMulticast({
+        tokens: tokens.map((token) => token.token),
+        notification: {
+          title: 'Pesan Baru',
+          body: preview,
+        },
+        data: {
+          type: 'chat_message',
+          bookingId: thread.bookingId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send chat notification for booking ${thread.bookingId}`,
         error instanceof Error ? error.stack : String(error),
       );
     }

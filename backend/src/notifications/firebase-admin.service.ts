@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { App, cert, initializeApp } from 'firebase-admin/app';
 import { getMessaging, Messaging } from 'firebase-admin/messaging';
+import { Firestore, getFirestore } from 'firebase-admin/firestore';
 
 @Injectable()
 export class FirebaseAdminService {
@@ -36,5 +37,12 @@ export class FirebaseAdminService {
       return null;
     }
     return getMessaging(this.app);
+  }
+
+  get firestore(): Firestore | null {
+    if (!this.app) {
+      return null;
+    }
+    return getFirestore(this.app);
   }
 }

@@ -10,6 +10,7 @@ export interface BookingSessionResponse {
   sessionNumber: number;
   scheduledAt?: Date | null;
   status: SessionStatus;
+  note?: string | null;
 }
 
 export interface BookingPaymentResponse {
@@ -40,6 +41,11 @@ export interface BookingConsentResponse {
 export interface BookingResponse {
   id: string;
   patientId: string;
+  patient: {
+    id: string;
+    email: string;
+    fullName?: string | null;
+  };
   therapist: {
     id: string;
     fullName: string;

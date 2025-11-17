@@ -8,8 +8,10 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
-  UseGuards,
+  Query,
   Req,
+  UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -24,6 +26,7 @@ import { UploadPaymentProofDto } from './dto/upload-payment-proof.dto';
 import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { AcceptConsentDto } from './dto/accept-consent.dto';
 import type { Request } from 'express';
+import { ListAssignedBookingsQueryDto } from './dto/list-assigned-bookings-query.dto';
 
 @Controller({
   path: 'bookings',
@@ -37,6 +40,17 @@ export class BookingsController {
   @Roles(UserRole.PATIENT)
   listMine(@CurrentUser() user: ActiveUserData) {
     return this.bookingsService.listForPatient(user.id);
+  }
+
+  @Get('assigned')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.THERAPIST)
+  listAssigned(
+    @CurrentUser() user: ActiveUserData,
+    @Query(new ValidationPipe({ transform: true }))
+    query: ListAssignedBookingsQueryDto,
+  ) {
+    return this.bookingsService.listForTherapist(user.id, query.status);
   }
 
   @Post()

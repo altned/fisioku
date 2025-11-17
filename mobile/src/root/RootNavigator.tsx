@@ -10,6 +10,9 @@ import { TherapistDetailScreen } from '../screens/TherapistDetailScreen';
 import { BookingRequestScreen } from '../screens/BookingRequestScreen';
 import { BookingsScreen } from '../screens/BookingsScreen';
 import { BookingDetailScreen } from '../screens/BookingDetailScreen';
+import { ChatScreen } from '../screens/ChatScreen';
+import { ReviewScreen } from '../screens/ReviewScreen';
+import { SessionNoteScreen } from '../screens/SessionNoteScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import type {
   AppStackParamList,
@@ -66,6 +69,21 @@ export function RootNavigator() {
             name="BookingDetail"
             component={BookingDetailScreen}
             options={{ title: 'Detail Booking' }}
+          />
+          <AppStack.Screen
+            name="Chat"
+            component={ChatScreen}
+            options={{ title: 'Percakapan' }}
+          />
+          <AppStack.Screen
+            name="Review"
+            component={ReviewScreen}
+            options={{ title: 'Tulis Review' }}
+          />
+          <AppStack.Screen
+            name="SessionNote"
+            component={SessionNoteScreen}
+            options={{ title: 'Catatan Sesi' }}
           />
         </AppStack.Navigator>
       ) : (

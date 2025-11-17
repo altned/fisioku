@@ -2,16 +2,22 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'rea
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AppStackParamList } from '../types/navigation';
 import { useAuth } from '../context/AuthContext';
-import { useMemo } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { api, uploadPaymentProofFile } from '../api/client';
 import { PAYMENT_INFO } from '../constants/payment';
+import { useQuery } from '@tanstack/react-query';
 
 export function BookingDetailScreen({ route, navigation }: NativeStackScreenProps<AppStackParamList, 'BookingDetail'>) {
   const { booking } = route.params;
   const { token } = useAuth();
   const queryClient = useQueryClient();
+  const meQuery = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.me(token ?? ''),
+    enabled: Boolean(token),
+  });
+  const role = meQuery.data?.role;
 
   const cancelMutation = useMutation({
     mutationFn: () => api.cancelBooking(token ?? '', booking.id),
@@ -71,6 +77,68 @@ export function BookingDetailScreen({ route, navigation }: NativeStackScreenProp
             <Text style={styles.buttonText}>Upload Bukti Pembayaran</Text>
           </TouchableOpacity>
         ) : null}
+        {booking.review ? (
+          <View style={styles.reviewCard}>
+            <Text style={styles.infoTitle}>Review Anda</Text>
+            <Text style={styles.reviewRating}>Rating: {booking.review.rating}/5</Text>
+            {booking.review.comment ? (
+              <Text style={styles.infoText}>{booking.review.comment}</Text>
+            ) : null}
+          </View>
+        ) : null}
+        {role === 'PATIENT' && booking.status === 'COMPLETED' && !booking.review ? (
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => navigation.navigate('Review', { bookingId: booking.id })}
+          >
+            <Text style={styles.buttonText}>Tulis Review</Text>
+          </TouchableOpacity>
+        ) : null}
+        {role === 'THERAPIST' ? (
+          <View style={styles.sessionsCard}>
+            <Text style={styles.infoTitle}>Daftar Sesi</Text>
+            {booking.sessions.map((session) => (
+              <View key={session.id} style={styles.sessionRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sessionTitle}>
+                    Sesi #{session.sessionNumber} • {session.status}
+                  </Text>
+                  <Text style={styles.sessionMeta}>
+                    {session.scheduledAt
+                      ? new Date(session.scheduledAt).toLocaleString('id-ID')
+                      : 'Belum dijadwalkan'}
+                  </Text>
+                  {session.note ? (
+                    <Text style={styles.sessionNote}>Catatan: {session.note}</Text>
+                  ) : null}
+                </View>
+                {session.status === 'COMPLETED' ? (
+                  <TouchableOpacity
+                    style={styles.noteButton}
+                    onPress={() =>
+                      navigation.navigate('SessionNote', {
+                        bookingId: booking.id,
+                        sessionId: session.id,
+                        sessionNumber: session.sessionNumber,
+                        existingNote: session.note ?? undefined,
+                      })
+                    }
+                  >
+                    <Text style={styles.noteButtonText}>
+                      {session.note ? 'Edit Catatan' : 'Tambah Catatan'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => navigation.navigate('Chat', { bookingId: booking.id })}
+        >
+          <Text style={styles.buttonText}>Buka Chat Terapis</Text>
+        </TouchableOpacity>
         {canCancel ? (
           <TouchableOpacity style={styles.dangerButton} onPress={handleCancel} disabled={cancelMutation.isPending}>
             <Text style={styles.dangerButtonText}>
@@ -111,6 +179,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: { color: '#fff', fontWeight: '600' },
+  secondaryButton: {
+    marginTop: 8,
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
   dangerButton: {
     marginTop: 8,
     backgroundColor: '#fee2e2',
@@ -130,4 +205,52 @@ const styles = StyleSheet.create({
   infoTitle: { fontSize: 15, fontWeight: '600', color: '#0f172a' },
   infoLabel: { fontSize: 13, fontWeight: '600', color: '#334155' },
   infoText: { fontSize: 13, color: '#475569' },
+  reviewCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#fff',
+    gap: 6,
+  },
+  reviewRating: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  sessionsCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#fff',
+    gap: 12,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  sessionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  sessionMeta: {
+    fontSize: 13,
+    color: '#475569',
+  },
+  sessionNote: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  noteButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  noteButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
 });

@@ -71,3 +71,46 @@ npm run start
 - Jalankan backend terlebih dahulu dan pastikan `EXPO_PUBLIC_API_URL` mengarah ke host yang dapat dijangkau simulator/emulator.
 - Untuk login awal, gunakan akun seed (`patient@fisioku.local` atau `therapist@fisioku.local`).
 - Fitur saat ini: autentikasi dasar, fetch profil, daftar terapis + pencarian, detail terapis, form booking terhubung API (create + consent otomatis), daftar booking terbaru, serta layar booking yang memungkinkan upload bukti bayar & pembatalan pasien.
+
+## Konfigurasi Firebase Chat & Push Notification
+
+1. **Backend** – isi variabel berikut di `backend/.env` dari service account Firebase Admin:
+   ```
+   FIREBASE_PROJECT_ID=...
+   FIREBASE_CLIENT_EMAIL=...
+   FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+   ```
+   Setelah itu restart server NestJS agar notifikasi FCM dan penulisan chat Firestore aktif.
+
+2. **Mobile** – masukkan konfigurasi web Firebase ke `mobile/.env` (`EXPO_PUBLIC_FIREBASE_*`). Karena Expo Go tidak mendukung push notification mulai SDK 53, gunakan *development build* (lihat https://docs.expo.dev/develop/development-builds/introduction/).
+
+3. **Firestore Security Rules** – tambahkan rules berikut di Firebase Console agar hanya pasien–terapis terkait yang bisa membaca/menulis chat:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /chat_threads/{threadId} {
+         allow read, write: if false; // metadata hanya dari backend
+
+         match /messages/{messageId} {
+           function thread() {
+             return get(/databases/$(database)/documents/chat_threads/$(threadId));
+           }
+           function isParticipant() {
+             return request.auth != null &&
+               (request.auth.uid == thread().data.patientId ||
+                request.auth.uid == thread().data.therapistId);
+           }
+           function threadLocked() {
+             return thread().data.lockedAt != null;
+           }
+
+           allow read: if isParticipant();
+           allow create: if isParticipant() && !threadLocked();
+           allow update, delete: if false;
+         }
+       }
+     }
+   }
+   ```
+   Pastikan struktur dokumen `chat_threads/{bookingId}` menyimpan `patientId`, `therapistId`, dan `lockedAt` seperti yang sudah dikontrol backend.

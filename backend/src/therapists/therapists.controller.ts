@@ -5,7 +5,9 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
+  ValidationPipe,
 } from '@nestjs/common';
 import { TherapistsService } from './therapists.service';
 import { ListTherapistsQueryDto } from './dto/list-therapists-query.dto';
@@ -25,7 +27,10 @@ export class TherapistsController {
   constructor(private readonly therapistsService: TherapistsService) {}
 
   @Get()
-  list(@Body() query: ListTherapistsQueryDto) {
+  list(
+    @Query(new ValidationPipe({ transform: true }))
+    query: ListTherapistsQueryDto,
+  ) {
     return this.therapistsService.list(query);
   }
 

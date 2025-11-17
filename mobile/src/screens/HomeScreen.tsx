@@ -20,7 +20,7 @@ export function HomeScreen() {
   const bookingsQuery = useQuery({
     queryKey: ['myBookings'],
     queryFn: () => api.myBookings(token ?? ''),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && data?.role !== 'THERAPIST',
   });
 
   return (

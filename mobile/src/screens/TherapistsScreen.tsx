@@ -61,6 +61,11 @@ export function TherapistsScreen() {
               <Text style={styles.name}>{item.fullName}</Text>
               <Text style={styles.meta}>{item.city ?? 'Lokasi belum diisi'}</Text>
               <Text style={styles.meta}>{item.specialties.join(', ') || 'Bidang belum diisi'}</Text>
+              <Text style={styles.rating}>
+                {item.averageRating
+                  ? `⭐ ${item.averageRating.toFixed(1)} (${item.reviewCount} review)`
+                  : 'Belum ada rating'}
+              </Text>
             </View>
           </TouchableOpacity>
         )}
@@ -122,5 +127,11 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     color: '#64748b',
+  },
+  rating: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#0f172a',
+    fontWeight: '600',
   },
 });

@@ -84,6 +84,7 @@ model User {
   patientReviews    Review[]           @relation("PatientReviews")
   therapistReviews  Review[]           @relation("TherapistReviews")
   sessionNotes      SessionNote[]
+  sentChatMessages  ChatMessage[]      @relation("UserChatMessages")
   storedFiles       StoredFile[]
   auditLogs         AuditLog[]
   createdAt         DateTime           @default(now())
@@ -162,6 +163,7 @@ model Booking {
   sessions          BookingSession[]
   payment           Payment?
   chatThread        ChatThread?
+  chatMessages      ChatMessage[]
   review            Review?
   consent           Consent?
 }
@@ -257,6 +259,19 @@ model ChatThread {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  bookingId String
+  senderId  String
+  message   String
+  sentAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  sender    User     @relation("UserChatMessages", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId, sentAt])
 }
 
 model StoredFile {

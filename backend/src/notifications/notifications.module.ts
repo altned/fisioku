@@ -6,6 +6,6 @@ import { FirebaseAdminService } from './firebase-admin.service';
 @Module({
   controllers: [NotificationsController],
   providers: [NotificationsService, FirebaseAdminService],
-  exports: [NotificationsService],
+  exports: [NotificationsService, FirebaseAdminService],
 })
 export class NotificationsModule {}

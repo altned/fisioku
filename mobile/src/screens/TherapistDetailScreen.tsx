@@ -18,6 +18,11 @@ export function TherapistDetailScreen({ route, navigation }: NativeStackScreenPr
         <Text style={styles.meta}>
           Pengalaman: {therapist.experienceYears ? `${therapist.experienceYears} tahun` : 'Belum diisi'}
         </Text>
+        <Text style={styles.rating}>
+          {therapist.averageRating
+            ? `⭐ ${therapist.averageRating.toFixed(1)} (${therapist.reviewCount} review)`
+            : 'Belum ada rating'}
+        </Text>
         <TouchableOpacity style={styles.button} onPress={handleBooking}>
           <Text style={styles.buttonText}>Mulai Booking</Text>
         </TouchableOpacity>
@@ -51,6 +56,11 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 15,
     color: '#475569',
+  },
+  rating: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
   },
   button: {
     marginTop: 12,
