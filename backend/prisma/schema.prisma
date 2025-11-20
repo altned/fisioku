@@ -83,10 +83,12 @@ model User {
   notificationTokens NotificationToken[]
   patientReviews    Review[]           @relation("PatientReviews")
   therapistReviews  Review[]           @relation("TherapistReviews")
+  reviewSummary     ReviewSummary?
   sessionNotes      SessionNote[]
   sentChatMessages  ChatMessage[]      @relation("UserChatMessages")
   storedFiles       StoredFile[]
   auditLogs         AuditLog[]
+  patientAddresses  PatientAddress[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 }
@@ -139,6 +141,7 @@ model TherapyPackage {
   price             Decimal
   defaultExpiryDays Int?
   isActive          Boolean   @default(true)
+  therapistShareRate Decimal  @default(0.7)
   bookings          Booking[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -147,6 +150,7 @@ model TherapyPackage {
 model Booking {
   id                String         @id @default(uuid())
   patientId         String
+  patientAddressId  String?
   therapistId       String
   packageId         String
   status            BookingStatus  @default(WAITING_THERAPIST_CONFIRM)
@@ -160,12 +164,30 @@ model Booking {
   patient           User           @relation("PatientBookings", fields: [patientId], references: [id])
   therapist         User           @relation("TherapistBookings", fields: [therapistId], references: [id])
   package           TherapyPackage @relation(fields: [packageId], references: [id])
+  patientAddress    PatientAddress? @relation(fields: [patientAddressId], references: [id], onDelete: SetNull)
   sessions          BookingSession[]
   payment           Payment?
   chatThread        ChatThread?
   chatMessages      ChatMessage[]
   review            Review?
   consent           Consent?
+}
+
+model PatientAddress {
+  id          String   @id @default(uuid())
+  patientId   String
+  label       String?
+  fullAddress String
+  city        String?
+  latitude    Decimal?
+  longitude   Decimal?
+  landmark    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  patient     User     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+
+  @@index([patientId])
 }
 
 model BookingSession {
@@ -208,6 +230,14 @@ model Review {
   therapist   User     @relation("TherapistReviews", fields: [therapistId], references: [id], onDelete: Cascade)
 }
 
+model ReviewSummary {
+  therapistId   String    @id
+  averageRating Float     @default(0)
+  reviewCount   Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+  therapist     User      @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+}
+
 model Consent {
   id          String   @id @default(uuid())
   bookingId   String   @unique
@@ -229,6 +259,10 @@ model Payment {
   uploadedAt  DateTime?
   verifiedBy  String?
   verifiedAt  DateTime?
+  therapistShareRate  Decimal?
+  platformFeeRate     Decimal?
+  therapistShareAmount Decimal?
+  platformFeeAmount    Decimal?
   booking     Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   verifier    User?         @relation("PaymentsVerified", fields: [verifiedBy], references: [id])
   proofFile   StoredFile?   @relation("PaymentProofFile", fields: [proofFileId], references: [id], onDelete: SetNull)

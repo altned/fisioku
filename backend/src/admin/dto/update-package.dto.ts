@@ -3,6 +3,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -29,6 +30,12 @@ export class UpdatePackageDto {
   @IsInt()
   @Min(0)
   price?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(100)
+  therapistSharePercentage?: number;
 
   @IsOptional()
   @IsInt()

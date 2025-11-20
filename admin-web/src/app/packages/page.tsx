@@ -16,6 +16,7 @@ export default function PackagesPage() {
     description: "",
     sessionCount: 1,
     price: 0,
+    therapistSharePercentage: 70,
   });
 
   const createMutation = useMutation({
@@ -25,9 +26,16 @@ export default function PackagesPage() {
         description: form.description,
         sessionCount: form.sessionCount,
         price: form.price,
+        therapistSharePercentage: form.therapistSharePercentage,
       }),
     onSuccess: () => {
-      setForm({ name: "", description: "", sessionCount: 1, price: 0 });
+      setForm({
+        name: "",
+        description: "",
+        sessionCount: 1,
+        price: 0,
+        therapistSharePercentage: 70,
+      });
       void queryClient.invalidateQueries({ queryKey: ["packages"] });
     },
   });
@@ -35,6 +43,15 @@ export default function PackagesPage() {
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       adminApi.togglePackage(id, isActive),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: ["packages"] }),
+  });
+
+  const updateShareMutation = useMutation({
+    mutationFn: ({ id, percentage }: { id: string; percentage: number }) =>
+      adminApi.updatePackage(id, {
+        therapistSharePercentage: percentage,
+      }),
     onSuccess: () =>
       void queryClient.invalidateQueries({ queryKey: ["packages"] }),
   });
@@ -99,6 +116,24 @@ export default function PackagesPage() {
             />
           </label>
         </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          <label className="text-sm text-slate-600">
+            <span className="text-slate-600">Persentase Share Terapis (%)</span>
+            <input
+              type="number"
+              min={10}
+              max={100}
+              className="mt-1 w-full soft-input text-sm"
+              value={form.therapistSharePercentage}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  therapistSharePercentage: Number(e.target.value),
+                }))
+              }
+            />
+          </label>
+        </div>
         <button
           type="submit"
           className="inline-flex w-fit items-center justify-center rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800"
@@ -119,6 +154,7 @@ export default function PackagesPage() {
                 <th className="px-4 py-3">Nama</th>
                 <th className="px-4 py-3">Harga</th>
                 <th className="px-4 py-3">Sesi</th>
+                <th className="px-4 py-3">Share Terapis</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Aksi</th>
               </tr>
@@ -138,6 +174,34 @@ export default function PackagesPage() {
                     }).format(pkg.price)}
                   </td>
                   <td className="px-4 py-3">{pkg.sessionCount}</td>
+                  <td className="px-4 py-3">
+                    {Math.round(Number(pkg.therapistShareRate) * 100)}%
+                    <button
+                      className="ml-3 text-xs font-semibold text-slate-500 hover:text-slate-900"
+                      onClick={() => {
+                        const currentPercentage = Math.round(
+                          Number(pkg.therapistShareRate) * 100,
+                        );
+                        const input = window.prompt(
+                          "Masukkan persentase share terapis (10-100)",
+                          String(currentPercentage),
+                        );
+                        if (!input) return;
+                        const parsed = Number(input);
+                        if (Number.isNaN(parsed) || parsed < 10 || parsed > 100) {
+                          window.alert("Persentase harus 10-100");
+                          return;
+                        }
+                        updateShareMutation.mutate({
+                          id: pkg.id,
+                          percentage: parsed,
+                        });
+                      }}
+                      disabled={updateShareMutation.isPending}
+                    >
+                      Ubah
+                    </button>
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={

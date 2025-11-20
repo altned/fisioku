@@ -9,6 +9,7 @@ import {
   BookingSession,
   BookingStatus,
   Consent,
+  PatientAddress,
   PatientProfile,
   Payment,
   PaymentMethod,
@@ -35,6 +36,8 @@ import {
 import { ChatService } from '../chat/chat.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from '../files/files.service';
+import { AuditService } from '../audit/audit.service';
+import { PatientAddressResponse } from '../patient-addresses/interfaces/patient-address-response.interface';
 
 type BookingSessionWithNote = BookingSession & {
   note: SessionNote | null;
@@ -48,6 +51,7 @@ export type BookingWithRelations = Booking & {
   payment: Payment | null;
   review: Review | null;
   consent: Consent | null;
+  patientAddress: PatientAddress | null;
 };
 
 const PAYMENT_DEADLINE_HOURS = 1;
@@ -60,6 +64,27 @@ const PAYMENT_BLOCKED_STATUSES: BookingStatus[] = [
   BookingStatus.COMPLETED,
 ];
 
+const DEFAULT_THERAPIST_SHARE_RATE = 0.7;
+const FINAL_BOOKING_STATUSES: BookingStatus[] = [
+  BookingStatus.CANCELLED_BY_ADMIN,
+  BookingStatus.CANCELLED_BY_PATIENT,
+  BookingStatus.CANCELLED_BY_THERAPIST,
+  BookingStatus.COMPLETED,
+  BookingStatus.PAYMENT_EXPIRED,
+  BookingStatus.REFUNDED,
+];
+
+const PATIENT_CANCELLABLE_STATUSES: BookingStatus[] = [
+  BookingStatus.WAITING_THERAPIST_CONFIRM,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
+];
+
+const THERAPIST_CANCELLABLE_STATUSES: BookingStatus[] = [
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
+];
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -67,6 +92,7 @@ export class BookingsService {
     private readonly chatService: ChatService,
     private readonly notificationsService: NotificationsService,
     private readonly filesService: FilesService,
+    private readonly auditService: AuditService,
   ) {}
 
   get bookingRelations() {
@@ -89,6 +115,7 @@ export class BookingsService {
     payment: true,
     review: true,
     consent: true,
+    patientAddress: true,
   };
 
   async create(
@@ -158,9 +185,28 @@ export class BookingsService {
       throw new BadRequestException('Therapist is not available at that time.');
     }
 
+    const therapistShareRate =
+      therapyPackage.therapistShareRate ??
+      new Prisma.Decimal(DEFAULT_THERAPIST_SHARE_RATE);
+    const platformFeeRate = new Prisma.Decimal(1).minus(therapistShareRate);
+    const therapistShareAmount = therapyPackage.price.mul(therapistShareRate);
+    const platformFeeAmount = therapyPackage.price.minus(therapistShareAmount);
+
+    let patientAddressId: string | undefined;
+    if (dto.patientAddressId) {
+      const address = await this.prisma.patientAddress.findUnique({
+        where: { id: dto.patientAddressId },
+      });
+      if (!address || address.patientId !== patient.id) {
+        throw new BadRequestException('Patient address is invalid.');
+      }
+      patientAddressId = address.id;
+    }
+
     const booking = await this.prisma.booking.create({
       data: {
         patientId: patient.id,
+        patientAddressId,
         therapistId: therapist.id,
         packageId: therapyPackage.id,
         status: BookingStatus.WAITING_THERAPIST_CONFIRM,
@@ -169,16 +215,19 @@ export class BookingsService {
         preferredSchedule,
         consentAccepted: dto.consentAccepted,
         sessions: {
-          create: {
-            sessionNumber: 1,
-            scheduledAt: preferredSchedule,
-            status: SessionStatus.WAITING_THERAPIST_CONFIRM,
-          },
+          create: this.buildInitialSessions(
+            therapyPackage.sessionCount,
+            preferredSchedule,
+          ),
         },
         payment: {
           create: {
             amount: therapyPackage.price,
             method: PaymentMethod.BANK_TRANSFER,
+            therapistShareRate,
+            platformFeeRate,
+            therapistShareAmount,
+            platformFeeAmount,
           },
         },
       },
@@ -231,6 +280,14 @@ export class BookingsService {
       where: { id: bookingId },
       data: updateData,
       include: this.bookingInclude,
+    });
+    await this.auditService.record({
+      action: dto.accept
+        ? 'BOOKING_THERAPIST_ACCEPTED'
+        : 'BOOKING_THERAPIST_REJECTED',
+      actorId: therapistId,
+      targetType: 'booking',
+      targetId: bookingId,
     });
     const response = this.toResponse(updated);
     await this.notificationsService.notifyBookingStatusChange(response);
@@ -382,6 +439,19 @@ export class BookingsService {
 
     const response = this.toResponse(updated);
     await this.notificationsService.notifyBookingStatusChange(response);
+    await this.auditService.record({
+      action: dto.approved
+        ? 'BOOKING_PAYMENT_VERIFIED'
+        : 'BOOKING_PAYMENT_REJECTED',
+      actorId: adminId,
+      targetType: 'booking',
+      targetId: bookingId,
+      metadata: {
+        paymentStatus: dto.approved
+          ? PaymentStatus.VERIFIED
+          : PaymentStatus.REJECTED,
+      },
+    });
     return response;
   }
 
@@ -426,7 +496,22 @@ export class BookingsService {
             uploadedAt: booking.payment.uploadedAt,
             verifiedAt: booking.payment.verifiedAt,
             verifiedBy: booking.payment.verifiedBy,
+            therapistSharePercentage: booking.payment.therapistShareRate
+              ? Number(booking.payment.therapistShareRate) * 100
+              : null,
+            platformFeePercentage: booking.payment.platformFeeRate
+              ? Number(booking.payment.platformFeeRate) * 100
+              : null,
+            therapistShareAmount: booking.payment.therapistShareAmount
+              ? booking.payment.therapistShareAmount.toString()
+              : null,
+            platformFeeAmount: booking.payment.platformFeeAmount
+              ? booking.payment.platformFeeAmount.toString()
+              : null,
           }
+        : null,
+      patientAddress: booking.patientAddress
+        ? this.mapPatientAddress(booking.patientAddress)
         : null,
       review: booking.review
         ? {
@@ -457,6 +542,22 @@ export class BookingsService {
     status: session.status,
     note: session.note?.content ?? null,
   });
+
+  private mapPatientAddress(
+    address: PatientAddress,
+  ): PatientAddressResponse {
+    return {
+      id: address.id,
+      label: address.label,
+      fullAddress: address.fullAddress,
+      city: address.city,
+      latitude: address.latitude ? Number(address.latitude) : null,
+      longitude: address.longitude ? Number(address.longitude) : null,
+      landmark: address.landmark,
+      createdAt: address.createdAt,
+      updatedAt: address.updatedAt,
+    };
+  }
 
   private async findBookingOrThrow(id: string): Promise<BookingWithRelations> {
     const booking = await this.prisma.booking.findUnique({
@@ -559,14 +660,10 @@ export class BookingsService {
       throw new ForbiddenException('You cannot cancel this booking.');
     }
 
-    const forbiddenStatuses: BookingStatus[] = [
-      BookingStatus.CANCELLED_BY_PATIENT,
-      BookingStatus.CANCELLED_BY_ADMIN,
-      BookingStatus.CANCELLED_BY_THERAPIST,
-      BookingStatus.COMPLETED,
-    ];
-    if (forbiddenStatuses.includes(booking.status)) {
-      throw new BadRequestException('Booking cannot be cancelled now.');
+    if (!PATIENT_CANCELLABLE_STATUSES.includes(booking.status)) {
+      throw new BadRequestException(
+        'Booking cannot be cancelled at this stage. Please contact support.',
+      );
     }
 
     const updated = await this.prisma.booking.update({
@@ -589,6 +686,60 @@ export class BookingsService {
           : undefined,
       },
       include: this.bookingInclude,
+    });
+
+    const response = this.toResponse(updated as BookingWithRelations);
+    await this.notificationsService.notifyBookingStatusChange(response);
+    return response;
+  }
+
+  async cancelByTherapist(
+    therapistId: string,
+    bookingId: string,
+    reason?: string,
+  ): Promise<BookingResponse> {
+    const booking = await this.findBookingOrThrow(bookingId);
+
+    if (booking.therapistId !== therapistId) {
+      throw new ForbiddenException('You cannot cancel this booking.');
+    }
+
+    if (!THERAPIST_CANCELLABLE_STATUSES.includes(booking.status)) {
+      throw new BadRequestException(
+        'Booking cannot be cancelled by therapist at this stage.',
+      );
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: BookingStatus.CANCELLED_BY_THERAPIST,
+        paymentDueAt: null,
+        sessions: {
+          updateMany: {
+            where: { bookingId },
+            data: { status: SessionStatus.CANCELLED },
+          },
+        },
+        payment: booking.payment
+          ? {
+              update: {
+                status: PaymentStatus.REJECTED,
+              },
+            }
+          : undefined,
+      },
+      include: this.bookingInclude,
+    });
+
+    await this.auditService.record({
+      action: 'BOOKING_CANCELLED_BY_THERAPIST',
+      actorId: therapistId,
+      targetType: 'booking',
+      targetId: bookingId,
+      metadata: {
+        reason: reason ?? null,
+      },
     });
 
     const response = this.toResponse(updated as BookingWithRelations);
@@ -723,5 +874,63 @@ export class BookingsService {
         },
       },
     });
+  }
+
+  private buildInitialSessions(
+    sessionCount: number,
+    preferredSchedule: Date,
+  ): Prisma.BookingSessionCreateWithoutBookingInput[] {
+    const normalizedCount = Number.isInteger(sessionCount) && sessionCount > 0 ? sessionCount : 1;
+    const sessions: Prisma.BookingSessionCreateWithoutBookingInput[] = [];
+
+    sessions.push({
+      sessionNumber: 1,
+      scheduledAt: preferredSchedule,
+      status: SessionStatus.WAITING_THERAPIST_CONFIRM,
+    });
+
+    for (let sessionNumber = 2; sessionNumber <= normalizedCount; sessionNumber += 1) {
+      sessions.push({
+        sessionNumber,
+        status: SessionStatus.PENDING_SCHEDULE,
+      });
+    }
+
+    return sessions;
+  }
+
+  async addSessions(bookingId: string, count: number): Promise<BookingResponse> {
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new BadRequestException('Count must be a positive integer.');
+    }
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { sessions: true },
+    });
+
+    if (!booking) {
+      throw new NotFoundException('Booking not found.');
+    }
+
+    if (FINAL_BOOKING_STATUSES.includes(booking.status)) {
+      throw new BadRequestException('Cannot add sessions to a finalized booking.');
+    }
+
+    const maxSessionNumber = booking.sessions.reduce(
+      (max, session) => Math.max(max, session.sessionNumber),
+      0,
+    );
+
+    await this.prisma.bookingSession.createMany({
+      data: Array.from({ length: count }).map((_, index) => ({
+        bookingId,
+        sessionNumber: maxSessionNumber + index + 1,
+        status: SessionStatus.PENDING_SCHEDULE,
+      })),
+    });
+
+    const updated = await this.findBookingOrThrow(bookingId);
+    return this.toResponse(updated);
   }
 }

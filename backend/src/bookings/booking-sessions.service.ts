@@ -9,6 +9,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ScheduleSessionDto } from './dto/schedule-session.dto';
 
+const ACTIVE_BOOKING_STATUSES: BookingStatus[] = [
+  BookingStatus.WAITING_THERAPIST_CONFIRM,
+  BookingStatus.PAYMENT_PENDING,
+  BookingStatus.WAITING_ADMIN_VERIFY_PAYMENT,
+  BookingStatus.PAID,
+  BookingStatus.IN_PROGRESS,
+  BookingStatus.COMPLETED,
+];
+
 @Injectable()
 export class BookingSessionsService {
   constructor(
@@ -42,6 +51,12 @@ export class BookingSessionsService {
     if (scheduledAt.getTime() <= Date.now()) {
       throw new BadRequestException('Schedule must be in the future.');
     }
+
+    await this.ensureTherapistAvailability(
+      session.booking.therapistId,
+      scheduledAt,
+      sessionId,
+    );
 
     const updated = await this.prisma.bookingSession.update({
       where: { id: sessionId },
@@ -134,6 +149,12 @@ export class BookingSessionsService {
       throw new BadRequestException('Schedule must be in the future.');
     }
 
+    await this.ensureTherapistAvailability(
+      session.booking.therapistId,
+      scheduledAt,
+      sessionId,
+    );
+
     const updated = await this.prisma.bookingSession.update({
       where: { id: sessionId },
       data: {
@@ -154,5 +175,46 @@ export class BookingSessionsService {
     });
 
     return updated;
+  }
+
+  private async ensureTherapistAvailability(
+    therapistId: string,
+    scheduledAt: Date,
+    sessionId: string,
+  ) {
+    const availability = await this.prisma.therapistAvailability.findFirst({
+      where: {
+        therapistId,
+        startTime: { lte: scheduledAt },
+        endTime: { gt: scheduledAt },
+      },
+    });
+
+    if (!availability) {
+      throw new BadRequestException(
+        'Therapist is not available at the selected time.',
+      );
+    }
+
+    const conflictingSession = await this.prisma.bookingSession.findFirst({
+      where: {
+        id: { not: sessionId },
+        booking: {
+          therapistId,
+          status: { in: ACTIVE_BOOKING_STATUSES },
+        },
+        status: { not: SessionStatus.CANCELLED },
+        scheduledAt: {
+          gte: availability.startTime,
+          lt: availability.endTime,
+        },
+      },
+    });
+
+    if (conflictingSession) {
+      throw new BadRequestException(
+        'Therapist already has another booking near that time.',
+      );
+    }
   }
 }

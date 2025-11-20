@@ -77,7 +77,7 @@ export class ChatService {
     message: string,
   ): Promise<void> {
     const thread = await this.getThreadForUser(bookingId, senderId);
-    if (thread.lockedAt) {
+    if (thread.lockedAt && thread.lockedAt.getTime() <= Date.now()) {
       throw new BadRequestException('Chat thread already locked.');
     }
 

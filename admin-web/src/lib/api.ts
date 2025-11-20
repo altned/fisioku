@@ -67,7 +67,23 @@ export type BookingListResponse = {
       reviewCount?: number;
     };
     package: { name: string };
-    payment?: { status: string; proofFileId?: string | null } | null;
+    patientAddress?: {
+      id: string;
+      label?: string | null;
+      fullAddress: string;
+      city?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      landmark?: string | null;
+    } | null;
+    payment?: {
+      status: string;
+      proofFileId?: string | null;
+      therapistSharePercentage?: number | null;
+      platformFeePercentage?: number | null;
+      therapistShareAmount?: string | null;
+      platformFeeAmount?: string | null;
+    } | null;
     sessions?: Array<{
       id: string;
       sessionNumber: number;
@@ -92,6 +108,7 @@ export type TherapyPackage = {
   price: number;
   defaultExpiryDays?: number | null;
   isActive: boolean;
+  therapistShareRate: number;
   createdAt: string;
 };
 
@@ -126,6 +143,56 @@ export type ChatMessageEntry = {
   };
 };
 
+export type ReviewSummaryResponse = {
+  summary: Array<{
+    therapistId: string;
+    therapistName?: string | null;
+    therapistEmail: string;
+    averageRating: number;
+    reviewCount: number;
+  }>;
+  reviews: Array<{
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+    therapistName: string;
+    patientName: string;
+  }>;
+};
+
+export type TherapistRevenueReport = {
+  rows: Array<{
+    therapistId: string;
+    therapistName: string | null;
+    therapistEmail: string;
+    totalRevenue: number;
+    therapistShare: number;
+    platformFee: number;
+    bookingCount: number;
+  }>;
+  totals: {
+    totalRevenue: number;
+    totalTherapistShare: number;
+    totalPlatformFee: number;
+  };
+};
+
+export type TherapistAvailabilityReport = {
+  range: {
+    start: string;
+    end: string;
+  };
+  rows: Array<{
+    therapistId: string;
+    therapistName: string | null;
+    therapistEmail: string;
+    availabilityCount: number;
+    scheduledCount: number;
+    remainingSlots: number;
+  }>;
+};
+
 export const adminApi = {
   summary: () => apiFetch<AdminSummary>("/api/v1/admin/summary"),
   bookings: (params: { page?: number; status?: string }) =>
@@ -139,12 +206,25 @@ export const adminApi = {
     sessionCount: number;
     price: number;
     defaultExpiryDays?: number;
+    therapistSharePercentage: number;
+    isActive?: boolean;
   }) =>
     apiFetch<TherapyPackage>("/api/v1/admin/packages", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
-  updatePackage: (id: string, payload: Partial<Omit<TherapyPackage, "id" | "createdAt" | "isActive">>) =>
+  updatePackage: (
+    id: string,
+    payload: Partial<{
+      name: string;
+      description?: string;
+      sessionCount: number;
+      price: number;
+      defaultExpiryDays?: number;
+      therapistSharePercentage: number;
+      isActive: boolean;
+    }>,
+  ) =>
     apiFetch<TherapyPackage>(`/api/v1/admin/packages/${id}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
@@ -212,6 +292,24 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ status }),
     }),
+  reviews: (params: { search?: string; minRating?: number; maxRating?: number }) =>
+    apiFetch<ReviewSummaryResponse>("/api/v1/admin/reviews", {
+      searchParams: params,
+    }),
+  therapistRevenueReport: (params: { startDate?: string; endDate?: string }) =>
+    apiFetch<TherapistRevenueReport>(
+      "/api/v1/admin/reports/therapist-revenue",
+      {
+        searchParams: params,
+      },
+    ),
+  therapistAvailabilityReport: (params: { startDate?: string; endDate?: string }) =>
+    apiFetch<TherapistAvailabilityReport>(
+      "/api/v1/admin/reports/therapist-availability",
+      {
+        searchParams: params,
+      },
+    ),
 };
 
 export async function uploadPaymentProofFile(file: File) {

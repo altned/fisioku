@@ -18,6 +18,7 @@ import { UserRole } from '@prisma/client';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { ActiveUserData } from '../auth/interfaces/active-user-data.interface';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
+import { ListTherapistReviewsQueryDto } from './dto/list-therapist-reviews-query.dto';
 
 @Controller({
   path: 'therapists',
@@ -47,5 +48,14 @@ export class TherapistsController {
     @Body() dto: CreateAvailabilityDto,
   ) {
     return this.therapistsService.createAvailability(therapist.id, dto);
+  }
+
+  @Get(':id/reviews')
+  getReviews(
+    @Param('id', new ParseUUIDPipe()) therapistId: string,
+    @Query(new ValidationPipe({ transform: true }))
+    query: ListTherapistReviewsQueryDto,
+  ) {
+    return this.therapistsService.listReviews(therapistId, query);
   }
 }

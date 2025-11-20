@@ -17,11 +17,13 @@ export type AppStackParamList = {
     sessionNumber: number;
     existingNote?: string | null;
   };
+  TherapistAvailability: undefined;
 };
 
 export type AppTabParamList = {
   Home: undefined;
   Therapists: undefined;
   Bookings: undefined;
+  Assigned: undefined;
   Profile: undefined;
 };

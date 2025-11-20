@@ -10,6 +10,16 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
+const missingKey = Object.entries(firebaseConfig).find(
+  ([, value]) => !value,
+);
+
+if (missingKey) {
+  throw new Error(
+    `Konfigurasi Firebase belum lengkap. Periksa variabel lingkungan ${missingKey[0]}.`,
+  );
+}
+
 const app =
   getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
 

@@ -35,6 +35,7 @@ type BookingE2EResponse = {
   sessions: Array<{
     id: string;
     sessionNumber: number;
+    status: string;
   }>;
 };
 
@@ -108,7 +109,7 @@ describe('App (e2e)', () => {
       .get('/api/v1/packages')
       .set('Authorization', `Bearer ${patientToken}`);
     expect(packagesRes.status).toBe(200);
-    const availablePackages = packagesRes.body as Array<{ id: string }>;
+    expect(Array.isArray(packagesRes.body)).toBe(true);
 
     const therapist = await prisma.therapistProfile.findFirst({
       include: { user: true },
@@ -117,21 +118,32 @@ describe('App (e2e)', () => {
       throw new Error('Therapist seed not found');
     }
 
-    const therapyPackage =
-      availablePackages[0] ??
-      (await prisma.therapyPackage.create({
-        data: {
-          name: `Test Package ${Date.now()}`,
-          sessionCount: 1,
-          price: 250_000,
-          description: 'Integration test package',
-          isActive: true,
-        },
-      }));
+    const therapyPackage = await prisma.therapyPackage.create({
+      data: {
+        name: `Test Package ${Date.now()}`,
+        sessionCount: 3,
+        price: 350_000,
+        description: 'Integration test package',
+        isActive: true,
+      },
+    });
 
     const preferredSchedule = new Date(
       Date.now() + 60 * 60 * 1000,
     ).toISOString();
+
+    const addressRes = await request(app.getHttpServer())
+      .post('/api/v1/patient-addresses')
+      .set('Authorization', `Bearer ${patientToken}`)
+      .send({
+        label: 'Rumah',
+        fullAddress: 'Jl. Sudirman No. 1, Jakarta',
+        city: 'Jakarta',
+        latitude: -6.201,
+        longitude: 106.816,
+      });
+    expect(addressRes.status).toBe(201);
+    const addressId = (addressRes.body as { id: string }).id;
 
     const bookingRes = await request(app.getHttpServer())
       .post('/api/v1/bookings')
@@ -143,12 +155,20 @@ describe('App (e2e)', () => {
         consentAccepted: true,
         painLevel: 4,
         notesFromPatient: 'Integration booking test',
+        patientAddressId: addressId,
       });
 
     expect(bookingRes.status).toBe(201);
     const bookingBody = bookingRes.body as BookingE2EResponse;
     expect(bookingBody.status).toEqual('WAITING_THERAPIST_CONFIRM');
-    expect(bookingBody.sessions).toHaveLength(1);
+    expect(bookingBody.sessions).toHaveLength(therapyPackage.sessionCount);
+    expect(bookingBody.sessions[0].status).toEqual(
+      'WAITING_THERAPIST_CONFIRM',
+    );
+    bookingBody.sessions.slice(1).forEach((session, index) => {
+      expect(session.sessionNumber).toEqual(index + 2);
+      expect(session.status).toEqual('PENDING_SCHEDULE');
+    });
     const sessionId = bookingBody.sessions[0].id;
 
     const consentRes = await request(app.getHttpServer())
@@ -253,6 +273,12 @@ describe('App (e2e)', () => {
     const verifyBody = verifyRes.body as BookingE2EResponse;
     expect(verifyBody.status).toEqual('PAID');
 
+    const latePatientCancelRes = await request(app.getHttpServer())
+      .patch(`/api/v1/bookings/${bookingBody.id}/cancel`)
+      .set('Authorization', `Bearer ${patientToken}`);
+
+    expect(latePatientCancelRes.status).toBe(400);
+
     await prisma.booking.update({
       where: { id: bookingBody.id },
       data: { status: 'COMPLETED' },
@@ -299,8 +325,43 @@ describe('App (e2e)', () => {
       true,
     );
 
+    const newSchedule = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+    const secondBookingRes = await request(app.getHttpServer())
+      .post('/api/v1/bookings')
+      .set('Authorization', `Bearer ${patientToken}`)
+      .send({
+        therapistId: therapist.userId,
+        packageId: therapyPackage.id,
+        preferredSchedule: newSchedule,
+        consentAccepted: true,
+        patientAddressId: addressId,
+      });
+    expect(secondBookingRes.status).toBe(201);
+    const secondBooking = secondBookingRes.body as BookingE2EResponse;
+
+    const therapistAcceptSecond = await request(app.getHttpServer())
+      .patch(`/api/v1/bookings/${secondBooking.id}/therapist-confirm`)
+      .set('Authorization', `Bearer ${therapistToken}`)
+      .send({ accept: true });
+    expect(therapistAcceptSecond.status).toBe(200);
+
+    const therapistCancelRes = await request(app.getHttpServer())
+      .patch(`/api/v1/bookings/${secondBooking.id}/therapist-cancel`)
+      .set('Authorization', `Bearer ${therapistToken}`)
+      .send({ reason: 'Terapis berhalangan' });
+
+    expect(therapistCancelRes.status).toBe(200);
+    const therapistCancelBody = therapistCancelRes.body as BookingE2EResponse;
+    expect(therapistCancelBody.status).toEqual('CANCELLED_BY_THERAPIST');
+
     await prisma.booking.delete({
       where: { id: bookingBody.id },
+    });
+    await prisma.booking.delete({
+      where: { id: secondBooking.id },
+    });
+    await prisma.patientAddress.delete({
+      where: { id: addressId },
     });
     await prisma.therapyPackage.delete({
       where: { id: therapyPackage.id },

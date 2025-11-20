@@ -18,6 +18,10 @@ export class CreateBookingDto {
   packageId: string;
 
   @IsOptional()
+  @IsUUID()
+  patientAddressId?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   notesFromPatient?: string;

@@ -4,6 +4,7 @@ import {
   PaymentStatus,
   SessionStatus,
 } from '@prisma/client';
+import { PatientAddressResponse } from '../../patient-addresses/interfaces/patient-address-response.interface';
 
 export interface BookingSessionResponse {
   id: string;
@@ -22,6 +23,10 @@ export interface BookingPaymentResponse {
   uploadedAt?: Date | null;
   verifiedAt?: Date | null;
   verifiedBy?: string | null;
+  therapistSharePercentage?: number | null;
+  platformFeePercentage?: number | null;
+  therapistShareAmount?: string | null;
+  platformFeeAmount?: string | null;
 }
 
 export interface BookingReviewResponse {
@@ -69,5 +74,6 @@ export interface BookingResponse {
   payment?: BookingPaymentResponse | null;
   review?: BookingReviewResponse | null;
   consent?: BookingConsentResponse | null;
+  patientAddress?: PatientAddressResponse | null;
   createdAt: Date;
 }

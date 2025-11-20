@@ -15,6 +15,7 @@ import { AdminModule } from './admin/admin.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { FilesModule } from './files/files.module';
 import { PackagesModule } from './packages/packages.module';
+import { PatientAddressesModule } from './patient-addresses/patient-addresses.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { PackagesModule } from './packages/packages.module';
     AdminModule,
     FilesModule,
     PackagesModule,
+    PatientAddressesModule,
   ],
   controllers: [AppController],
   providers: [RolesGuard],

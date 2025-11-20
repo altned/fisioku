@@ -27,6 +27,7 @@ import { VerifyPaymentDto } from './dto/verify-payment.dto';
 import { AcceptConsentDto } from './dto/accept-consent.dto';
 import type { Request } from 'express';
 import { ListAssignedBookingsQueryDto } from './dto/list-assigned-bookings-query.dto';
+import { TherapistCancelBookingDto } from './dto/therapist-cancel-booking.dto';
 
 @Controller({
   path: 'bookings',
@@ -79,6 +80,21 @@ export class BookingsController {
     @Body() dto: ConfirmBookingDto,
   ) {
     return this.bookingsService.confirmByTherapist(user.id, bookingId, dto);
+  }
+
+  @Patch(':bookingId/therapist-cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.THERAPIST)
+  therapistCancel(
+    @CurrentUser() user: ActiveUserData,
+    @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
+    @Body() dto: TherapistCancelBookingDto,
+  ) {
+    return this.bookingsService.cancelByTherapist(
+      user.id,
+      bookingId,
+      dto.reason,
+    );
   }
 
   @Patch(':bookingId/payment-proof')

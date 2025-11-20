@@ -1,14 +1,33 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 export function NotificationRegistrar() {
   const { token } = useAuth();
   const registeredTokenRef = useRef<string | null>(null);
   const authTokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.DEFAULT,
+    }).catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     const previousAuthToken = authTokenRef.current;
@@ -56,6 +75,13 @@ export function NotificationRegistrar() {
 }
 
 async function getDevicePushTokenAsync() {
+  const isExpoGo = Constants.appOwnership === 'expo';
+  if (isExpoGo && Platform.OS === 'android') {
+    console.warn(
+      'Expo Go di Android tidak mendukung push notification. Gunakan development build atau skip registrasi token.',
+    );
+    return null;
+  }
   if (!Device.isDevice) {
     return null;
   }

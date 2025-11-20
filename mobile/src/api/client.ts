@@ -88,6 +88,22 @@ export type TherapyPackageSummary = {
   price: number;
 };
 
+export type TherapistAvailability = {
+  id: string;
+  startTime: string;
+  endTime: string;
+  isRecurring: boolean;
+  recurringWeekday?: number | null;
+};
+
+export type TherapistReviewEntry = {
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  patientName: string;
+};
+
 export type BookingResponse = {
   id: string;
   status: string;
@@ -125,6 +141,29 @@ export type BookingResponse = {
     comment?: string | null;
     createdAt: string;
   } | null;
+  payment?: {
+    status: string;
+    method: string;
+    proofUrl?: string | null;
+    proofFileId?: string | null;
+    amount: string;
+    uploadedAt?: string | null;
+    verifiedAt?: string | null;
+    verifiedBy?: string | null;
+    therapistSharePercentage?: number | null;
+    platformFeePercentage?: number | null;
+    therapistShareAmount?: string | null;
+    platformFeeAmount?: string | null;
+  } | null;
+  patientAddress?: {
+    id: string;
+    label?: string | null;
+    fullAddress: string;
+    city?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    landmark?: string | null;
+  } | null;
 };
 
 export const api = {
@@ -146,6 +185,7 @@ export const api = {
       consentAccepted: boolean;
       notesFromPatient?: string;
       painLevel?: number;
+      patientAddressId?: string;
     },
   ) =>
     apiFetch<{ id: string; status: string }>('/api/v1/bookings', {
@@ -203,6 +243,7 @@ export const api = {
       firestoreId: string;
       bookingId: string;
       locked: boolean;
+      lockedUntil?: string | null;
     }>(`/api/v1/chat/threads/${bookingId}`, {
       token,
     }),
@@ -246,6 +287,69 @@ export const api = {
   ) =>
     apiFetch(`/api/v1/booking-sessions/${sessionId}/note`, {
       method: 'PUT',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  therapistAvailability: (token: string, therapistId: string) =>
+    apiFetch<TherapistAvailability[]>(
+      `/api/v1/therapists/${therapistId}/availability`,
+      { token },
+    ),
+  therapistReviews: (
+    therapistId: string,
+    params?: { limit?: number },
+  ) =>
+    apiFetch<TherapistReviewEntry[]>(
+      buildPath(`/api/v1/therapists/${therapistId}/reviews`, params),
+    ),
+  createTherapistAvailability: (
+    token: string,
+    payload: { startTime: string; endTime: string; isRecurring?: boolean },
+  ) =>
+    apiFetch('/api/v1/therapists/availability', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listPatientAddresses: (token: string) =>
+    apiFetch<
+      Array<{
+        id: string;
+        label?: string | null;
+        fullAddress: string;
+        city?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
+        landmark?: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>
+    >('/api/v1/patient-addresses', {
+      token,
+    }),
+  createPatientAddress: (
+    token: string,
+    payload: {
+      label?: string;
+      fullAddress: string;
+      city?: string;
+      latitude?: number;
+      longitude?: number;
+      landmark?: string;
+    },
+  ) =>
+    apiFetch<{
+      id: string;
+      label?: string | null;
+      fullAddress: string;
+      city?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      landmark?: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }>('/api/v1/patient-addresses', {
+      method: 'POST',
       token,
       body: JSON.stringify(payload),
     }),

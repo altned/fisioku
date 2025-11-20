@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /chat_threads/{threadId} {
+      allow read: if isParticipant(resource.data);
+      allow write: if isParticipant(request.resource.data);
+
+      match /messages/{messageId} {
+        allow read: if isParticipant(getThread());
+        allow create: if isParticipant(getThread()) && canSendMessage(getThread());
+        allow update, delete: if false;
+      }
+
+      function getThread() {
+        return get(/databases/$(database)/documents/chat_threads/$(threadId)).data;
+      }
+    }
+  }
+
+  function isParticipant(data) {
+    return request.auth != null
+      && (request.auth.uid == data.patientId || request.auth.uid == data.therapistId);
+  }
+
+  function canSendMessage(thread) {
+    return !(thread.lockedAt != null && request.time >= thread.lockedAt);
+  }
+}

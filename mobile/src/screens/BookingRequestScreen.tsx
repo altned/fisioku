@@ -8,7 +8,9 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, {
+  DateTimePickerAndroid,
+} from '@react-native-community/datetimepicker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AppStackParamList } from '../types/navigation';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +18,26 @@ import { api } from '../api/client';
 import { PAYMENT_INFO } from '../constants/payment';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ActivityIndicator } from 'react-native';
+
+const getFriendlyError = (error: unknown) => {
+  if (error instanceof Error) {
+    try {
+      const parsed = JSON.parse(error.message);
+      if (parsed && typeof parsed.message === 'string') {
+        if (parsed.message.includes('not available')) {
+          return 'Terapis tidak tersedia pada jam yang dipilih. Silakan pilih waktu lain.';
+        }
+        return parsed.message;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    if (error.message) {
+      return error.message;
+    }
+  }
+  return 'Terjadi kesalahan. Silakan coba lagi.';
+};
 
 export function BookingRequestScreen({ route }: NativeStackScreenProps<AppStackParamList, 'BookingRequest'>) {
   const { therapist } = route.params;
@@ -54,7 +76,7 @@ export function BookingRequestScreen({ route }: NativeStackScreenProps<AppStackP
       Alert.alert('Berhasil', 'Permintaan booking terkirim.');
     },
     onError: (error) => {
-      Alert.alert('Gagal', error instanceof Error ? error.message : 'Terjadi kesalahan');
+      Alert.alert('Gagal', getFriendlyError(error));
     },
   });
 
@@ -62,15 +84,54 @@ export function BookingRequestScreen({ route }: NativeStackScreenProps<AppStackP
     createMutation.mutate();
   };
 
+  const openAndroidPicker = () => {
+    DateTimePickerAndroid.open({
+      value: date,
+      mode: 'date',
+      onChange: (_, selectedDate) => {
+        if (!selectedDate) {
+          return;
+        }
+        const withDate = new Date(selectedDate);
+        withDate.setHours(date.getHours(), date.getMinutes(), 0, 0);
+        DateTimePickerAndroid.open({
+          value: withDate,
+          mode: 'time',
+          onChange: (_, selectedTime) => {
+            if (!selectedTime) {
+              return;
+            }
+            const next = new Date(withDate);
+            next.setHours(
+              selectedTime.getHours(),
+              selectedTime.getMinutes(),
+              0,
+              0,
+            );
+            setDate(next);
+          },
+        });
+      },
+    });
+  };
+
+  const handleOpenPicker = () => {
+    if (Platform.OS === 'android') {
+      openAndroidPicker();
+    } else {
+      setShowPicker(true);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.card}>
         <Text style={styles.title}>Booking dengan {therapist.fullName}</Text>
         <Text style={styles.meta}>Tentukan jadwal preferensi & catatan singkat.</Text>
-        <TouchableOpacity style={styles.dateInput} onPress={() => setShowPicker(true)}>
+        <TouchableOpacity style={styles.dateInput} onPress={handleOpenPicker}>
           <Text style={styles.dateText}>{date.toLocaleString('id-ID')}</Text>
         </TouchableOpacity>
-        {showPicker && (
+        {showPicker && Platform.OS === 'ios' && (
           <DateTimePicker
             value={date}
             mode="datetime"

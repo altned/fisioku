@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { useCallback } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   View,
@@ -9,17 +8,17 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../context/AuthContext';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   api,
   uploadPaymentProofFile,
   type BookingResponse,
 } from '../api/client';
+import { PAYMENT_INFO } from '../constants/payment';
 import type { AppStackParamList } from '../types/navigation';
 
 export function BookingsScreen() {
@@ -27,50 +26,33 @@ export function BookingsScreen() {
   const stackNavigation =
     useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const queryClient = useQueryClient();
-  const meQuery = useQuery({
-    queryKey: ['me'],
-    queryFn: () => api.me(token ?? ''),
+  const {
+    data: bookings,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: ['myBookings'],
+    queryFn: () => api.myBookings(token ?? ''),
     enabled: Boolean(token),
   });
-  const isTherapist = meQuery.data?.role === 'THERAPIST';
-  const bookingsQuery = useQuery({
-    queryKey: [isTherapist ? 'assignedBookings' : 'myBookings'],
-    queryFn: () =>
-      isTherapist
-        ? api.myTherapistBookings(token ?? '')
-        : api.myBookings(token ?? ''),
-    enabled: Boolean(token) && Boolean(meQuery.data),
-  });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) {
+        return;
+      }
+      void refetch();
+    }, [refetch, token]),
+  );
 
   const cancelMutation = useMutation({
     mutationFn: (bookingId: string) =>
       api.cancelBooking(token ?? '', bookingId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['myBookings'] });
+      Alert.alert('Berhasil', 'Booking berhasil dibatalkan.');
     },
   });
-  const confirmMutation = useMutation({
-    mutationFn: (payload: { bookingId: string; accept: boolean }) =>
-      api.confirmBookingAsTherapist(
-        token ?? '',
-        payload.bookingId,
-        payload.accept,
-      ),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['assignedBookings'] }),
-  });
-  const scheduleMutation = useMutation({
-    mutationFn: (payload: { sessionId: string; scheduledAt: string }) =>
-      api.scheduleSession(token ?? '', payload.sessionId, payload.scheduledAt),
-    onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ['assignedBookings'] }),
-  });
-  const [scheduleState, setScheduleState] = useState<{
-    bookingId: string;
-    sessionId: string;
-  } | null>(null);
-  const [scheduleDate, setScheduleDate] = useState(new Date());
-  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
 
   const handleUploadProof = async (bookingId: string) => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -104,48 +86,6 @@ export function BookingsScreen() {
         onPress: () => cancelMutation.mutate(bookingId),
       },
     ]);
-  };
-
-  const handleConfirm = (bookingId: string, accept: boolean) => {
-    confirmMutation.mutate({ bookingId, accept });
-  };
-
-  const openSchedulePicker = (
-    bookingId: string,
-    sessionId: string,
-    current?: string | null,
-  ) => {
-    setScheduleState({ bookingId, sessionId });
-    setScheduleDate(current ? new Date(current) : new Date());
-    setShowSchedulePicker(true);
-  };
-
-  const handleScheduleChange = (_event: unknown, selected?: Date) => {
-    if (Platform.OS !== 'ios') {
-      setShowSchedulePicker(false);
-    }
-    if (selected) {
-      setScheduleDate(selected);
-    }
-  };
-
-  const submitSchedule = async () => {
-    if (!scheduleState) return;
-    try {
-      await scheduleMutation.mutateAsync({
-        sessionId: scheduleState.sessionId,
-        scheduledAt: scheduleDate.toISOString(),
-      });
-      Alert.alert('Sukses', 'Jadwal sesi diperbarui.');
-    } catch (error) {
-      Alert.alert(
-        'Gagal',
-        error instanceof Error ? error.message : 'Terjadi kesalahan',
-      );
-    } finally {
-      setShowSchedulePicker(false);
-      setScheduleState(null);
-    }
   };
 
   const renderPatientActions = (booking: BookingResponse) => {
@@ -197,85 +137,58 @@ export function BookingsScreen() {
     return actions;
   };
 
-  const renderTherapistActions = (booking: BookingResponse) => {
-    const nextSession = booking.sessions.find(
-      (session) => session.status !== 'COMPLETED',
-    );
-    return (
-      <View style={styles.therapistActions}>
-        {booking.status === 'WAITING_THERAPIST_CONFIRM' ? (
-          <View style={styles.rowActions}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={() => handleConfirm(booking.id, true)}
-              disabled={confirmMutation.isPending}
-            >
-              <Text style={styles.actionText}>Terima</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionDanger}
-              onPress={() => handleConfirm(booking.id, false)}
-              disabled={confirmMutation.isPending}
-            >
-              <Text style={styles.actionDangerText}>Tolak</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-        {nextSession ? (
-          <TouchableOpacity
-            style={styles.actionSecondary}
-            onPress={() =>
-              openSchedulePicker(
-                booking.id,
-                nextSession.id,
-                nextSession.scheduledAt ?? booking.preferredSchedule,
-              )
-            }
-            disabled={scheduleMutation.isPending}
-          >
-            <Text style={styles.actionText}>
-              {nextSession.scheduledAt ? 'Ubah Jadwal' : 'Atur Jadwal'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => stackNavigation.navigate('Chat', { bookingId: booking.id })}
-        >
-          <Text style={styles.actionText}>Chat</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  };
-
   return (
     <View style={styles.container}>
       <FlatList
-        data={bookingsQuery.data ?? []}
+        data={bookings ?? []}
         keyExtractor={(item) => item.id}
         refreshControl={
           <RefreshControl
-            refreshing={bookingsQuery.isFetching}
-            onRefresh={() => bookingsQuery.refetch()}
+            refreshing={isFetching}
+            onRefresh={() => void refetch()}
           />
         }
         renderItem={({ item }) => (
           <View style={styles.item}>
-            <Text style={styles.bookingTitle}>{item.package.name}</Text>
-            <Text style={styles.meta}>
-              {isTherapist
-                ? `Pasien: ${item.patient.fullName ?? item.patient.email}`
-                : item.therapist.fullName}
-            </Text>
-            <Text style={styles.meta}>
-              {new Date(item.preferredSchedule).toLocaleString('id-ID')}
-            </Text>
-            <Text style={styles.statusPill}>{item.status}</Text>
-            <View style={styles.actions}>
-              {isTherapist
-                ? renderTherapistActions(item)
-                : renderPatientActions(item)}
+            <View style={styles.headerRow}>
+              <View>
+                <Text style={styles.bookingTitle}>{item.package.name}</Text>
+                <Text style={styles.meta}>{item.therapist.fullName}</Text>
+                <Text style={styles.meta}>
+                  {new Date(item.preferredSchedule).toLocaleString('id-ID')}
+                </Text>
+              </View>
+              <Text style={styles.statusPill}>{item.status}</Text>
             </View>
+            <View style={styles.paymentCard}>
+              <Text style={styles.paymentTitle}>Instruksi Pembayaran</Text>
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>Transfer Bank</Text>
+                <Text style={styles.paymentValue}>
+                  {PAYMENT_INFO.bank.name}
+                </Text>
+                <Text style={styles.paymentValue}>
+                  a.n {PAYMENT_INFO.bank.accountName} ({PAYMENT_INFO.bank.accountNumber})
+                </Text>
+              </View>
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>QRIS</Text>
+                <Text style={styles.paymentValue}>
+                  {PAYMENT_INFO.qris.merchant}
+                </Text>
+                <Text style={styles.paymentValue}>
+                  {PAYMENT_INFO.qris.description} (Ref: {PAYMENT_INFO.qris.reference})
+                </Text>
+              </View>
+              <View style={styles.stepsCard}>
+                <Text style={styles.stepsTitle}>Cara Pembayaran</Text>
+                <Text style={styles.stepsText}>1. Lakukan transfer sesuai nominal paket.</Text>
+                <Text style={styles.stepsText}>2. Simpan bukti transfer (foto/ screenshot).</Text>
+                <Text style={styles.stepsText}>3. Tekan "Upload Bukti" kemudian pilih berkas bukti.
+                  Setelah terkirim, admin akan memverifikasi.</Text>
+              </View>
+            </View>
+            <View style={styles.actions}>{renderPatientActions(item)}</View>
           </View>
         )}
         ListEmptyComponent={() => (
@@ -284,35 +197,6 @@ export function BookingsScreen() {
           </View>
         )}
       />
-      {showSchedulePicker ? (
-        <View style={styles.schedulePicker}>
-          <DateTimePicker
-            value={scheduleDate}
-            mode="datetime"
-            onChange={handleScheduleChange}
-          />
-          <View style={styles.rowActions}>
-            <TouchableOpacity
-              style={styles.actionSecondary}
-              onPress={submitSchedule}
-              disabled={scheduleMutation.isPending}
-            >
-              <Text style={styles.actionText}>
-                {scheduleMutation.isPending ? 'Menyimpan...' : 'Simpan'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.actionDanger}
-              onPress={() => {
-                setShowSchedulePicker(false);
-                setScheduleState(null);
-              }}
-            >
-              <Text style={styles.actionDangerText}>Batal</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -321,30 +205,78 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc', padding: 16 },
   item: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 16,
+    gap: 12,
     shadowColor: '#0f172a',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 12,
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
     elevation: 4,
   },
-  bookingTitle: { fontSize: 16, fontWeight: '600', color: '#0f172a' },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  bookingTitle: { fontSize: 18, fontWeight: '600', color: '#0f172a' },
   meta: { fontSize: 13, color: '#475569' },
   statusPill: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: '#e0e7ff',
     color: '#312e81',
     fontSize: 12,
     fontWeight: '600',
   },
+  paymentCard: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    backgroundColor: '#f8fafc',
+  },
+  paymentTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  paymentRow: {
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    padding: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  paymentLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2563eb',
+    textTransform: 'uppercase',
+  },
+  paymentValue: {
+    fontSize: 13,
+    color: '#0f172a',
+  },
+  stepsCard: {
+    borderRadius: 12,
+    backgroundColor: '#111827',
+    padding: 14,
+  },
+  stepsTitle: {
+    color: '#f8fafc',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  stepsText: {
+    color: '#cbd5f5',
+    fontSize: 12,
+  },
   actions: { flexDirection: 'column', gap: 8, marginTop: 10 },
-  rowActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   actionButton: {
     borderRadius: 10,
     paddingVertical: 6,
@@ -365,20 +297,6 @@ const styles = StyleSheet.create({
   },
   actionText: { color: '#fff', fontWeight: '600' },
   actionDangerText: { color: '#991b1b', fontWeight: '600' },
-  therapistActions: { gap: 8 },
-  schedulePicker: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 16,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.15,
-    shadowRadius: 18,
-    elevation: 10,
-  },
   emptyState: {
     alignItems: 'center',
     padding: 32,

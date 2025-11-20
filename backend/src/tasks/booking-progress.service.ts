@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { BookingStatus, SessionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { BookingsService, BookingWithRelations } from '../bookings/bookings.service';
+import {
+  BookingsService,
+  BookingWithRelations,
+} from '../bookings/bookings.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -51,6 +54,7 @@ export class BookingProgressService {
   }
 
   private async completeFinishedBookings() {
+    const now = new Date();
     const bookings = await this.prisma.booking.findMany({
       where: {
         status: { in: [BookingStatus.PAID, BookingStatus.IN_PROGRESS] },
@@ -65,30 +69,52 @@ export class BookingProgressService {
       },
     });
 
+    let completedCount = 0;
+
     for (const booking of bookings) {
+      const lockAt = await this.lockChatAfterCompletion(
+        booking.id,
+        booking.sessions,
+      );
+      if (!lockAt) {
+        continue;
+      }
+
+      if (now < lockAt) {
+        if (booking.status === BookingStatus.PAID) {
+          const updated = await this.prisma.booking.update({
+            where: { id: booking.id },
+            data: { status: BookingStatus.IN_PROGRESS },
+            include: this.bookingsService.bookingRelations,
+          });
+          await this.notifyStatusChange(updated as BookingWithRelations);
+        }
+        continue;
+      }
+
       const updated = await this.prisma.booking.update({
         where: { id: booking.id },
         data: { status: BookingStatus.COMPLETED },
         include: this.bookingsService.bookingRelations,
       });
       await this.notifyStatusChange(updated as BookingWithRelations);
-      await this.lockChatAfterCompletion(booking.id, booking.sessions);
+      completedCount += 1;
     }
 
-    if (bookings.length) {
-      this.logger.log(`Marked ${bookings.length} bookings as COMPLETED`);
+    if (completedCount) {
+      this.logger.log(`Marked ${completedCount} bookings as COMPLETED`);
     }
   }
 
   private async lockChatAfterCompletion(
     bookingId: string,
     sessions: Array<{ completedAt: Date | null }>,
-  ) {
+  ): Promise<Date | null> {
     const timestamps = sessions
       .map((session) => session.completedAt?.getTime() ?? 0)
       .filter((value) => value > 0);
     if (!timestamps.length) {
-      return;
+      return null;
     }
     const latest = new Date(Math.max(...timestamps));
     const lockAt = new Date(latest.getTime() + 24 * 60 * 60 * 1000);
@@ -96,6 +122,7 @@ export class BookingProgressService {
       where: { bookingId },
       data: { lockedAt: lockAt },
     });
+    return lockAt;
   }
 
   private async notifyStatusChange(booking: BookingWithRelations) {

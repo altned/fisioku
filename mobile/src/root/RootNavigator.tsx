@@ -9,27 +9,46 @@ import { TherapistsScreen } from '../screens/TherapistsScreen';
 import { TherapistDetailScreen } from '../screens/TherapistDetailScreen';
 import { BookingRequestScreen } from '../screens/BookingRequestScreen';
 import { BookingsScreen } from '../screens/BookingsScreen';
+import { TherapistBookingsScreen } from '../screens/TherapistBookingsScreen';
 import { BookingDetailScreen } from '../screens/BookingDetailScreen';
 import { ChatScreen } from '../screens/ChatScreen';
 import { ReviewScreen } from '../screens/ReviewScreen';
 import { SessionNoteScreen } from '../screens/SessionNoteScreen';
+import { TherapistAvailabilityScreen } from '../screens/TherapistAvailabilityScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import type {
   AppStackParamList,
   AuthStackParamList,
   AppTabParamList,
 } from '../types/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../api/client';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 const AppTabs = createBottomTabNavigator<AppTabParamList>();
 
-function AppTabsNavigator() {
+function AppTabsNavigator({ role }: { role?: string }) {
+  const isTherapist = role === 'THERAPIST';
   return (
     <AppTabs.Navigator screenOptions={{ headerShown: false }}>
       <AppTabs.Screen name="Home" component={HomeScreen} options={{ title: 'Beranda' }} />
-      <AppTabs.Screen name="Therapists" component={TherapistsScreen} options={{ title: 'Terapis' }} />
-      <AppTabs.Screen name="Bookings" component={BookingsScreen} options={{ title: 'Booking' }} />
+      {!isTherapist && (
+        <AppTabs.Screen
+          name="Therapists"
+          component={TherapistsScreen}
+          options={{ title: 'Terapis' }}
+        />
+      )}
+      {isTherapist ? (
+        <AppTabs.Screen
+          name="Assigned"
+          component={TherapistBookingsScreen}
+          options={{ title: 'Tugas' }}
+        />
+      ) : (
+        <AppTabs.Screen name="Bookings" component={BookingsScreen} options={{ title: 'Booking' }} />
+      )}
       <AppTabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profil' }} />
     </AppTabs.Navigator>
   );
@@ -37,8 +56,13 @@ function AppTabsNavigator() {
 
 export function RootNavigator() {
   const { token, loading } = useAuth();
+  const meQuery = useQuery({
+    queryKey: ['me'],
+    queryFn: () => api.me(token ?? ''),
+    enabled: Boolean(token),
+  });
 
-  if (loading) {
+  if (loading || meQuery.isLoading) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator size="large" />
@@ -52,9 +76,10 @@ export function RootNavigator() {
         <AppStack.Navigator>
           <AppStack.Screen
             name="AppTabs"
-            component={AppTabsNavigator}
             options={{ headerShown: false }}
-          />
+          >
+            {() => <AppTabsNavigator role={meQuery.data?.role} />}
+          </AppStack.Screen>
           <AppStack.Screen
             name="TherapistDetail"
             component={TherapistDetailScreen}
@@ -84,6 +109,11 @@ export function RootNavigator() {
             name="SessionNote"
             component={SessionNoteScreen}
             options={{ title: 'Catatan Sesi' }}
+          />
+          <AppStack.Screen
+            name="TherapistAvailability"
+            component={TherapistAvailabilityScreen}
+            options={{ title: 'Ketersediaan Terapis' }}
           />
         </AppStack.Navigator>
       ) : (

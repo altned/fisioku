@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ListTherapistsQueryDto } from './dto/list-therapists-query.dto';
 import { CreateAvailabilityDto } from './dto/create-availability.dto';
+import { ListTherapistReviewsQueryDto } from './dto/list-therapist-reviews-query.dto';
 
 export interface TherapistSummary {
   id: string;
@@ -166,5 +167,33 @@ export class TherapistsService {
         recurringWeekday: dto.isRecurring ? dto.recurringWeekday : null,
       },
     });
+  }
+
+  async listReviews(
+    therapistId: string,
+    query: ListTherapistReviewsQueryDto,
+  ) {
+    const reviews = await this.prisma.review.findMany({
+      where: { therapistId },
+      orderBy: { createdAt: 'desc' },
+      take: query.limit,
+      include: {
+        patient: {
+          select: {
+            email: true,
+            patientProfile: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+
+    return reviews.map((review) => ({
+      id: review.id,
+      rating: review.rating,
+      comment: review.comment,
+      createdAt: review.createdAt,
+      patientName:
+        review.patient.patientProfile?.fullName ?? review.patient.email ?? '',
+    }));
   }
 }

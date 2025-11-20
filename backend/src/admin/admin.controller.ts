@@ -26,6 +26,9 @@ import { ScheduleSessionDto } from '../bookings/dto/schedule-session.dto';
 import { ListAuditLogsQueryDto } from './dto/list-audit-logs-query.dto';
 import { ListUsersQueryDto } from './dto/list-users-query.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { ListReviewsQueryDto } from './dto/list-reviews-query.dto';
+import { ListRevenueReportQueryDto } from './dto/list-revenue-report-query.dto';
+import { ListAvailabilityReportQueryDto } from './dto/list-availability-report-query.dto';
 
 @Controller({
   path: 'admin',
@@ -129,5 +132,24 @@ export class AdminController {
     @Body() dto: UpdateUserStatusDto,
   ) {
     return this.adminService.updateUserStatus(user.id, userId, dto);
+  }
+
+  @Get('reviews')
+  listReviews(@Query() query: ListReviewsQueryDto) {
+    return this.adminService.listReviews(query);
+  }
+
+  @Get('reports/therapist-revenue')
+  getTherapistRevenueReport(
+    @Query() query: ListRevenueReportQueryDto,
+  ) {
+    return this.adminService.getTherapistRevenueReport(query);
+  }
+
+  @Get('reports/therapist-availability')
+  getTherapistAvailabilityReport(
+    @Query() query: ListAvailabilityReportQueryDto,
+  ) {
+    return this.adminService.getTherapistAvailabilityReport(query);
   }
 }

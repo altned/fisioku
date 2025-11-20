@@ -33,10 +33,14 @@ export class ChatController {
     @Param('bookingId', new ParseUUIDPipe()) bookingId: string,
   ) {
     const thread = await this.chatService.getThreadForUser(bookingId, user.id);
+    const lockedUntil = thread.lockedAt ?? null;
+    const locked =
+      Boolean(lockedUntil) && lockedUntil!.getTime() <= Date.now();
     return {
       firestoreId: thread.firestoreId,
       bookingId: thread.bookingId,
-      locked: Boolean(thread.lockedAt),
+      locked,
+      lockedUntil,
       lastMessageAt: thread.lastMessageAt,
     };
   }
@@ -49,9 +53,13 @@ export class ChatController {
     @Body() dto: LockChatDto,
   ) {
     const thread = await this.chatService.lockThread(bookingId, dto.locked);
+    const lockedUntil = thread.lockedAt ?? null;
+    const locked =
+      Boolean(lockedUntil) && lockedUntil!.getTime() <= Date.now();
     return {
       bookingId: thread.bookingId,
-      locked: Boolean(thread.lockedAt),
+      locked,
+      lockedUntil,
     };
   }
 

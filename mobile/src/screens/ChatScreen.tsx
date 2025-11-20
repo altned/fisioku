@@ -9,7 +9,8 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { AppStackParamList } from '../types/navigation';
 import { useAuth } from '../context/AuthContext';
@@ -45,6 +46,22 @@ export function ChatScreen({
     queryFn: () => api.chatThread(token ?? '', bookingId),
     enabled: Boolean(token),
   });
+  const { refetch: refetchThread } = threadQuery;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!token) {
+        return () => undefined;
+      }
+      void refetchThread();
+      const interval = setInterval(() => {
+        void refetchThread();
+      }, 60_000);
+      return () => {
+        clearInterval(interval);
+      };
+    }, [refetchThread, token]),
+  );
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -99,6 +116,9 @@ export function ChatScreen({
   };
 
   const isLocked = threadQuery.data?.locked;
+  const lockedUntilText = threadQuery.data?.lockedUntil
+    ? new Date(threadQuery.data.lockedUntil).toLocaleString('id-ID')
+    : null;
 
   const sortedMessages = useMemo(() => messages, [messages]);
 
@@ -150,6 +170,15 @@ export function ChatScreen({
           </View>
         }
       />
+      {lockedUntilText ? (
+        <View style={styles.lockInfo}>
+          <Text style={styles.lockInfoText}>
+            {isLocked
+              ? `Chat terkunci sejak ${lockedUntilText}`
+              : `Chat akan terkunci pada ${lockedUntilText}`}
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
@@ -182,6 +211,18 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     gap: 12,
+  },
+  lockInfo: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#fff7ed',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  lockInfoText: {
+    color: '#a16207',
+    fontSize: 13,
   },
   messageBubble: {
     padding: 12,
